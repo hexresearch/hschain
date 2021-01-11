@@ -156,8 +156,8 @@ data family PublicKey alg
 -- | Cryptographical algorithms with asymmetrical keys. This is base
 --   class which doesn;t provide any interesting functionality except
 --   for generation of keys and coversion private to public.
-class ( ByteReprSized (PublicKey alg)
-      , ByteReprSized (PrivKey   alg)
+class ( ByteRepr (PublicKey alg)
+      , ByteRepr (PrivKey   alg)
       , Ord (PublicKey alg)
       ) => CryptoAsymmetric alg where
   -- | Compute public key from  private key
@@ -173,7 +173,7 @@ newtype Signature alg = Signature ByteString
   deriving newtype (Eq, Ord, Serialise, NFData)
 
 
-class ( ByteReprSized (Signature   alg)
+class ( ByteRepr (Signature alg)
       , CryptoAsymmetric alg
       ) => CryptoSign alg where
   -- | Sign sequence of bytes
@@ -214,7 +214,7 @@ data family DHSecret alg
 
 -- | Cryptographical algorithm that support some variant of
 --   Diffie-Hellman key exchange
-class ( ByteReprSized (DHSecret alg)
+class ( ByteRepr (DHSecret alg)
       , CryptoAsymmetric alg
       ) => CryptoDH alg where
   -- | Calculate shared secret from private and public key. Following
@@ -225,19 +225,19 @@ class ( ByteReprSized (DHSecret alg)
 
 
 -- | Size of public key in bytes
-publicKeySize :: forall alg proxy i. (CryptoAsymmetric alg, Num i) => proxy alg -> i
+publicKeySize :: forall alg proxy i. (ByteReprSized (PublicKey alg), Num i) => proxy alg -> i
 publicKeySize _ = fromIntegral $ natVal (Proxy @(ByteSize (PublicKey alg)))
 
 -- | Size of private key in bytes
-privKeySize :: forall alg proxy i. (CryptoAsymmetric alg, Num i) => proxy alg -> i
+privKeySize :: forall alg proxy i. (ByteReprSized (PrivKey alg), Num i) => proxy alg -> i
 privKeySize _ = fromIntegral $ natVal (Proxy @(ByteSize (PrivKey alg)))
 
 -- | Size of signature in bytes
-signatureSize :: forall alg proxy i. (CryptoSign alg, Num i) => proxy alg -> i
+signatureSize :: forall alg proxy i. (ByteReprSized (Signature alg), Num i) => proxy alg -> i
 signatureSize _ = fromIntegral $ natVal (Proxy @(ByteSize (Signature alg)))
 
 -- | Size of signature in bytes
-dhSecretSize :: forall alg proxy i. (CryptoDH alg, Num i) => proxy alg -> i
+dhSecretSize :: forall alg proxy i. (ByteReprSized (DHSecret alg), Num i) => proxy alg -> i
 dhSecretSize _ = fromIntegral $ natVal (Proxy @(ByteSize (DHSecret alg)))
 
 
@@ -560,20 +560,7 @@ instance StreamCypher alg => JSON.ToJSONKey   (CypherNonce alg) where
   toJSONKey = defaultToJsonKey
 
 
-
-----------------------------------------------------------------
--- Signing and verification of values
-----------------------------------------------------------------
-
--- | Whether signature has been verified or not. Note that all data
---   coming from external sources should be treated as unverified
---   therefore only @Signed 'Unverified@ has instances for
---   serialization
-data SignedState = Verified
-                 | Unverified
-
-
-
+----------------------------------------
 
 instance CryptoAsymmetric alg => CryptoHashable (PublicKey alg) where
   hashStep k
@@ -590,3 +577,14 @@ instance CryptoAsymmetric alg => CryptoHashable (Signature alg) where
     = hashStep (CrySignature $ getCryptoName (asymmKeyAlgorithmName @alg))
    <> hashStep (encodeToBS k)
 
+
+----------------------------------------------------------------
+-- Signing and verification of values
+----------------------------------------------------------------
+
+-- | Whether signature has been verified or not. Note that all data
+--   coming from external sources should be treated as unverified
+--   therefore only @Signed 'Unverified@ has instances for
+--   serialization
+data SignedState = Verified
+                 | Unverified

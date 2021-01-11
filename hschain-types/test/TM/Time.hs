@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveAnyClass      #-}
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE DerivingStrategies  #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
@@ -118,7 +119,9 @@ privateKeyList :: [PrivKey (Alg BData)]
 privateKeyList = makePrivKeyStream 13337
 
 -- Sadly (code duplication. Same function is defined in hschain-examples)
-makePrivKeyStream :: forall alg. CryptoSign alg => Int -> [PrivKey alg]
+makePrivKeyStream
+  :: forall alg. (ByteReprSized (PrivKey alg), CryptoSign alg)
+  => Int -> [PrivKey alg]
 makePrivKeyStream seed
   = unfoldr step
   $ randoms (mkStdGen seed)

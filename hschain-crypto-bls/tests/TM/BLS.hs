@@ -168,7 +168,8 @@ tests = testGroup "BLS"
 
 
 testsAsymmetricCrypto
-  :: forall alg. (CryptoAsymmetric alg, Eq (PrivKey alg))
+  :: forall alg. ( CryptoAsymmetric alg, Eq (PrivKey alg)
+                 , ByteReprSized (PublicKey alg), ByteReprSized (PrivKey alg))
   => Proxy alg -> [TestTree]
 testsAsymmetricCrypto tag =
   [ testGroup "PrivKey"   $ testsStdIntances (Proxy @(PrivKey   alg))
@@ -192,7 +193,7 @@ testsAsymmetricCrypto tag =
 
 
 testsSignatureCrypto
-  :: forall alg. CryptoSign alg
+  :: forall alg. (CryptoSign alg, ByteReprSized (Signature alg))
   => Proxy alg -> [TestTree]
 testsSignatureCrypto tag =
   [ testGroup "Signature"   $ testsStdIntances (Proxy @(Signature   alg))

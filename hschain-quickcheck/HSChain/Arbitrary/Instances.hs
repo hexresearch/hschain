@@ -39,21 +39,21 @@ instance Arbitrary (Hash alg) => Arbitrary (Hashed alg a) where
   arbitrary = Hashed <$> arbitrary
   shrink  _ = []
 
-instance CryptoSign alg => Arbitrary (Signature alg) where
+instance (ByteReprSized (Signature alg)) => Arbitrary (Signature alg) where
   arbitrary = Signature <$> Arb.fastRandBs (signatureSize (Proxy @alg))
   shrink _ = []
 
-instance (CryptoSign alg, Arbitrary a) => Arbitrary (Signed sign alg a) where
+instance (ByteReprSized (Signature alg), Arbitrary a) => Arbitrary (Signed sign alg a) where
   arbitrary = genericArbitrary
   shrink = genericShrink
 
-instance CryptoSign alg => Arbitrary (PublicKey alg) where
+instance (ByteReprSized (PublicKey alg)) => Arbitrary (PublicKey alg) where
   arbitrary = do
-    bs <- vectorOf (privKeySize (Proxy @alg)) arbitrary
+    bs <- vectorOf (publicKeySize (Proxy @alg)) arbitrary
     return $ fromJust $ decodeFromBS $ BS.pack bs
   shrink _ = []
 
-instance CryptoSign alg => Arbitrary (PrivKey alg) where
+instance (ByteReprSized (PrivKey alg)) => Arbitrary (PrivKey alg) where
   arbitrary = do
     bs <- vectorOf (privKeySize (Proxy @alg)) arbitrary
     return $ fromJust $ decodeFromBS $ BS.pack bs
@@ -63,7 +63,7 @@ instance Arbitrary (KDFOutput alg) where
   arbitrary = KDFOutput <$> Arb.fastRandBs 256
   shrink  _ = []
 
-instance CryptoDH alg => Arbitrary (DHSecret alg) where
+instance (ByteReprSized (DHSecret alg)) => Arbitrary (DHSecret alg) where
   arbitrary = do
     bs <- vectorOf (dhSecretSize (Proxy @alg)) arbitrary
     return $ fromJust $ decodeFromBS $ BS.pack bs
@@ -113,7 +113,7 @@ instance Arbitrary Round where
     arbitrary = Round <$> arbitrary
     shrink = genericShrink
 
-instance (Crypto (Alg a)) => Arbitrary (Commit a) where
+instance (Crypto (Alg a), ByteReprSized (Signature (Alg a))) => Arbitrary (Commit a) where
   arbitrary = Commit <$> arbitrary
                      <*> ((NE.:|) <$> arbitrary <*> resize 3 arbitrary)
 
@@ -131,6 +131,7 @@ instance ( Crypto (Alg a)
          , IsMerkle f
          , CryptoHashable a
          , Arbitrary a
+         , ByteReprSized (Signature (Alg a))
          ) => Arbitrary (GBlock f a) where
   arbitrary = Block <$> arbitrary
                     <*> arbitrary
@@ -141,7 +142,7 @@ instance ( Crypto (Alg a)
                     <*> arbitrary
   shrink = genericShrink
 
-instance (Crypto (Alg a)) => Arbitrary (ByzantineEvidence a) where
+instance (Crypto (Alg a), ByteReprSized (Signature (Alg a))) => Arbitrary (ByzantineEvidence a) where
   arbitrary = genericArbitrary
   shrink = genericShrink
 
@@ -162,7 +163,8 @@ instance (Ord (PublicKey alg), Arbitrary (PublicKey alg)) => Arbitrary (Validato
       return (k,p)
     return $ ValidatorChange $ Map.fromList pairs
 
-instance (Eq (PublicKey alg), CryptoSign alg) => Arbitrary (ValidatorSet alg) where
+instance (Eq (PublicKey alg), CryptoSign alg, ByteReprSized (PublicKey alg)
+         ) => Arbitrary (ValidatorSet alg) where
   arbitrary = do
     n     <- choose (0,10)
     pairs <- replicateM n arbitrary
@@ -174,7 +176,7 @@ instance (Eq (PublicKey alg), CryptoSign alg) => Arbitrary (ValidatorSet alg) wh
     | vset' <-  shrink $ asValidatorList vset
     ]
 
-instance CryptoSign alg => Arbitrary (Validator alg) where
+instance (ByteReprSized (PublicKey alg), CryptoSign alg) => Arbitrary (Validator alg) where
   arbitrary = Validator <$> arbitrary <*> choose (1,10)
 
 instance Arbitrary (ValidatorIdx alg) where
