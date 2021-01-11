@@ -685,7 +685,7 @@ interpretSpec
   -> CoinSpecification          -- ^ Specification
   -> AppCallbacks m BData       -- ^ Commit callbacks
   -> m (StateView m BData, [m ()])
-interpretSpec cfg net NodeSpec{..} valSet coin@CoinSpecification{..} cb = do
+interpretSpec cfg net NodeSpec{..} valSet coin cb = do
   -- Start node
   -- (state,memThr,readST) <- inMemoryStateView $ genesisValSet genesis
   --

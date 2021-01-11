@@ -166,7 +166,7 @@ handleConsensus
   -> MempoolDict view
   -> MempCmdConsensus view
   -> m (MempoolDict view)
-handleConsensus db@BlockDB{..} InternalCh{..} MempoolDict{..} = \case
+handleConsensus db InternalCh{..} MempoolDict{..} = \case
   MempHeadChange bhFrom state -> do
     let bhTo = stateBH state
     TxChange{..} <- computeMempoolChange db bhFrom bhTo

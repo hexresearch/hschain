@@ -149,9 +149,9 @@ startPeer peerAddrTo peerCh@PeerChans{..} conn mempool = logOnException $
     cursor   <- getMempoolCursor $ mempoolHandle mempool
     runConcurrently
       [ descendNamespace "recv"    $ peerReceive   recvCh conn
-      , descendNamespace "send"    $ peerSend      peerCh gossipCh conn
+      , descendNamespace "send"    $ peerSend      gossipCh conn
       , descendNamespace "FSM"     $ peerFSM       peerCh gossipCh recvCh cursor
-      , descendNamespace "mempool" $ mempoolThread p2pConfig gossipCh mempool
+      , descendNamespace "mempool" $ mempoolThread gossipCh mempool
       , descendNamespace "PEX"     $ pexCapacityThread peerRegistry p2pConfig gossipCh
       ]
 
@@ -210,11 +210,10 @@ handlePexMessage PeerChans{..} gossipCh = \case
 -- | Very simple generator of mempool gossip
 mempoolThread
   :: (MonadLogger m, MonadCatch m, MonadIO m)
-  => NetworkCfg app
-  -> TBQueue (GossipMsg a)
+  => TBQueue (GossipMsg a)
   -> Mempool m (Hashed alg (TX a)) (TX a)
   -> m b
-mempoolThread NetworkCfg{..} gossipCh Mempool{..} = do
+mempoolThread gossipCh Mempool{..} = do
   ch <- atomicallyIO makeNewTxBroadcast
   logOnException $ forever $ do
     atomicallyIO . writeTBQueue gossipCh . GossipTx =<< awaitIO ch 
@@ -265,11 +264,10 @@ peerReceive recvCh P2PConnection{..} = logOnException $ do
 peerSend
   :: ( MonadReadDB m, MonadMask m, MonadIO m, MonadLogger m, MonadTMMonitoring m
      , BlockData a)
-  => PeerChans n a
-  -> TBQueue (GossipMsg a)
+  => TBQueue (GossipMsg a)
   -> P2PConnection
   -> m x
-peerSend PeerChans{..} gossipCh P2PConnection{..} = logOnException $ do
+peerSend gossipCh P2PConnection{..} = logOnException $ do
   forever $ do
     msg <- atomicallyIO $ readTBQueue gossipCh
     send $ serialise msg
@@ -301,7 +299,7 @@ pexFSM
   -> PeerChans n a
   -> Mempool m (Hashed (Alg a) (TX a)) (TX a)
   -> m b
-pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool = descendNamespace "PEX" $ do
+pexFSM cfg net peerCh@PeerChans{..} mempool = descendNamespace "PEX" $ do
   -- Start by connecting to peers
   forever $ do
     atomicallyIO nonEnough

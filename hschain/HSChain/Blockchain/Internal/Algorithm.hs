@@ -296,7 +296,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
       -- If we awaiting commit we don't care about prevotes
       | StepAwaitCommit _ <- smStep -> tranquility
       | otherwise                   -> checkTransitionPrevote par voteRound
-                                   =<< addPrevote par v sm
+                                   =<< addPrevote v sm
     ----------------------------------------------------------------
     PreCommitMsg v@(signedValue -> Vote{..})
       -- Collect stragglers precommits for inclusion of
@@ -315,7 +315,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
       -- Only accept votes with current height
       | voteHeight /= currentH -> tranquility
       | otherwise              -> checkTransitionPrecommit par voteRound
-                              =<< addPrecommit par v sm
+                              =<< addPrecommit v sm
       where
         v' = unverifySignature v
     ----------------------------------------------------------------
@@ -328,7 +328,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
         -- Update state accordingly. We unconditionally enter next step of
         -- round or next round.
         EQ -> case smStep of
-          StepNewHeight n   -> canCreate par sm n >>= \case
+          StepNewHeight n   -> canCreate par n >>= \case
             True  -> enterPropose par smRound sm Reason'Timeout
             False -> do let step = StepNewHeight (n+1)
                         lift $ yield $ EngTimeout $ Timeout currentH (Round 0) step
@@ -344,10 +344,9 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
 canCreate
   :: (Monad m)
   => HeightParameters m a
-  -> TMState m a
   -> Int
   -> CNS x a m Bool
-canCreate HeightParameters{..} TMState{..} n
+canCreate HeightParameters{..} n
   -- We want to create first block signed by all validators as soon as
   -- possible
   | currentH == Height 1 = return True
@@ -361,7 +360,7 @@ checkTransitionPrevote
   -> Round
   -> TMState m a
   -> CNS x a m (TMState m a)
-checkTransitionPrevote par@HeightParameters{..} r sm@TMState{..}
+checkTransitionPrevote par r sm@TMState{..}
   --  * We have +2/3 prevotes for some later round (R+x)
   --  => goto Prevote(H,R+x)
   | r > smRound
@@ -569,11 +568,10 @@ enterPrecommit par@HeightParameters{..} r sm@TMState{..} reason = do
 
 addPrevote
   :: (Monad m)
-  => HeightParameters m a
-  -> Signed 'Verified (Alg a) (Vote 'PreVote a)
+  => Signed 'Verified (Alg a) (Vote 'PreVote a)
   -> TMState m a
   -> CNS x a m (TMState m a)
-addPrevote HeightParameters{..} v@(signedValue -> Vote{..}) sm@TMState{..} = do
+addPrevote v@(signedValue -> Vote{..}) sm@TMState{..} = do
   lift $ yield $ EngAnnPreVote v
   case addSignedValue voteRound v smPrevotesSet of
     InsertOK votes   -> return sm { smPrevotesSet = votes }
@@ -585,11 +583,10 @@ addPrevote HeightParameters{..} v@(signedValue -> Vote{..}) sm@TMState{..} = do
 
 addPrecommit
   :: (Monad m)
-  => HeightParameters m a
-  -> Signed 'Verified (Alg a) (Vote 'PreCommit a)
+  => Signed 'Verified (Alg a) (Vote 'PreCommit a)
   -> TMState m a
   -> CNS x a m (TMState m a)
-addPrecommit HeightParameters{..} v@(signedValue -> Vote{..}) sm@TMState{..} = do
+addPrecommit v@(signedValue -> Vote{..}) sm@TMState{..} = do
   lift $ yield $ EngAnnPreCommit v
   case addSignedValue voteRound v smPrecommitsSet of
     InsertOK votes   -> return sm { smPrecommitsSet = votes }
