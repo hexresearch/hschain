@@ -16,6 +16,8 @@ Build-Type:     Simple
 
 Library
   Ghc-options:         -Wall
+  if impl(ghc >= 8.10)
+    Ghc-options:       -Wunused-packages
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.9 && <5
                      , hschain-control
