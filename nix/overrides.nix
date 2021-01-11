@@ -1,13 +1,14 @@
 {
   # List of GHC versions for which we apply overrides
-  versions = ["ghc844" "ghc865" "ghc883" "ghc8101" "ghcjs"];
+  versions = ["ghc844" "ghc865" "ghc883" "ghc884" "ghc8102" "ghcjs"];
   # List of packages with custom overrides
   derivations = {
     haskell = ./derivations/haskell;
     ghc844  = ./derivations/ghc84;
     ghc865  = ./derivations/ghc86;
     ghc883  = ./derivations/ghc88;
-    ghc8101 = ./derivations/ghc810;
+    ghc884  = ./derivations/ghc88;
+    ghc8102 = ./derivations/ghc810;
   };
   # Common overrides for librarise
   haskell = {
@@ -25,31 +26,29 @@
   };
   ghc883 = {
   };
-  ghc8101 = {
-    generic-lens    = { check     = false; };
-    monad-par       = { check     = false; };
+  ghc884 = {
+  };
+  ghc8102 = {
     http-media      = { jailbreak = true; };
-    cborg           = { jailbreak = true; };
-    serialise       = { jailbreak = true; };
-    microlens-th    = { jailbreak = true; };
-    retry           = { jailbreak = true; };
-    safe-exceptions = { jailbreak = true; };
-    vault           = { jailbreak = true; };
     servant         = { jailbreak = true; check = false; };
     servant-server  = { jailbreak = true; check = false; };
   };
   ghcjs = {
-    SHA                   = { check = false; };
-    cborg                 = { check = false; };
-    half                  = { check = false; };
-    quickcheck-assertions = { check = false; };
-    scientific            = { check = false; };
-    tasty-quickcheck      = { check = false; };
-    QuickCheck            = { check = false; };
-    lens                  = { check = false; };
-    generic-lens          = { check = false; };
-    comonad               = { check = false; };
-    semigroupoids         = { check = false; };
+    SHA                   = { check = false; };  # test hangs
+    tasty-quickcheck      = { check = false; };  # test hangs
+    scientific            = { check = false; };  # test hangs
+    QuickCheck            = { check = false; };  # test hangs
+    base-compat-batteries = { check = false; };  # test fails
+    time-compat           = { check = false; };  # test fails
+    vector                = { check = false; };  # tests take infinity
+    # --
+    half                  = { check = false; };   # doctests
+    quickcheck-assertions = { check = false; };   # doctests
+    lens                  = { check = false; };   # doctests
+    generic-lens          = { check = false; };   # inspection-tests
+    comonad               = { check = false; };   # doctests
+    temporary             = { check = false; };   # doctests
+    semigroupoids         = { check = false; };   # doctests
     # Test have dependency on cryptonite
     Lazy-Pbkdf2           = { check = false; };
   };
