@@ -23,7 +23,6 @@ Library
   Build-Depends:       base              >=4.9 && <5
                      , hschain-crypto
                      , hschain-control
-                     , hschain-config
                      , hschain-mempool
                      , hschain-logger
                      , hschain-net
@@ -31,22 +30,15 @@ Library
                      , hschain-db
                        --
                      , aeson
-                     , base58-bytestring >=0.1
                      , bytestring        >=0.10
                      , containers        >=0.5.9
-                     , data-default-class
                      , deepseq           >=1.4
-                     , directory
                      , generic-lens      >=0.2
                      , exceptions        >=0.8.3
-                     , filepath
                      , katip             >=0.8
-                     , lrucache
                      , lens              >=4.17
                      , mmorph
                      , mtl
-                     , pipes             >=4
-                     , prometheus-client
                      , random
                      , serialise         >=0.2
                      , sqlite-simple
@@ -55,8 +47,6 @@ Library
                      , time
                      , transformers      >=0.5
                      , vector
-                     , unordered-containers >=0.2.5.0
-                     , yaml
                      -- Web stuff
                      , servant         >=0.16 && <0.17
                      , servant-server  >=0.16 && <0.17
@@ -118,7 +108,6 @@ Executable hschain-PoW-coin
                      , hschain-PoW
                      , hschain-net
                      , hschain-merkle
-                     , hschain-types
                      , hschain-db
                      , hschain-logger
                      , hschain-crypto
@@ -126,20 +115,16 @@ Executable hschain-PoW-coin
                      , hschain-config
                      --
                      , aeson
-                     , katip
                      , mtl
                      , text
                      , bytestring
                      , containers
                      , vector
                      , random
-                     , serialise
-                     , exceptions
                      , transformers
                      , optparse-applicative
                      , yaml
                      --
-                     , servant
                      , servant-server
                      , warp
   hs-source-dirs:      exe
@@ -179,7 +164,6 @@ Executable hschain-PoW-light
                      , hschain-PoW
                      , hschain-net
                      , hschain-merkle
-                     , hschain-types
                      , hschain-db
                      , hschain-logger
                      , hschain-crypto
@@ -187,23 +171,13 @@ Executable hschain-PoW-light
                      , hschain-config
                      --
                      , aeson
-                     , katip
                      , mtl
                      , lens
-                     , text
-                     , bytestring
                      , containers
                      , vector
-                     , random
-                     , serialise
-                     , exceptions
                      , transformers
                      , optparse-applicative
                      , yaml
-                     --
-                     , servant
-                     , servant-server
-                     , warp
   hs-source-dirs:      exe
   Main-is:             coin-light.hs
   default-extensions:
@@ -239,15 +213,11 @@ Executable hschain-PoW-key
   Default-Language:    Haskell2010
   Build-Depends:       base                 >=4.9 && <5
                      , hschain-PoW
-                     , hschain-merkle
-                     , hschain-types
                      , hschain-crypto
                      , aeson
-                     , mtl
                      , text
                      , bytestring
                      , containers
-                     , vector
                      , yaml
                      , optparse-applicative
   hs-source-dirs:      exe
@@ -274,14 +244,11 @@ Test-suite hschain-PoW-tests
                      , containers
                      , serialise
                      , transformers
-                     , directory
                      , random
-                     , generic-lens
                      , lens
                      , mtl
                      , stm
                      , tasty             >=0.11
-                     , tasty-quickcheck
                      , tasty-hunit       >=0.10
   hs-source-dirs:      test
   Main-is:             Main.hs
