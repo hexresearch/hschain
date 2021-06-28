@@ -111,7 +111,7 @@ handlerVotesTimeoutMsg st = do
           unknown   = Map.difference cmtVotes peerVotes
           n         = Map.size unknown
       if | n > 0     -> do i <- liftIO $ randomRIO (0,n-1) -- TODO: move RndGen to Config or state
-                           let vote@(signedValue -> Vote{..}) = unverifySignature $ toList unknown !! i
+                           let vote = unverifySignature $ toList unknown !! i
                            return [GossipPreCommit vote]
          | otherwise -> return []
   where

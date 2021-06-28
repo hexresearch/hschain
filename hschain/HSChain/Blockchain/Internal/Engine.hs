@@ -173,7 +173,7 @@ decideNewBlock
   -> m (Commit a, StateView m a)
 decideNewBlock config appValidatorKey
                stateView
-               appCall@AppCallbacks{..} appCh@AppChans{..} appChanRxInternal lastCommt = do
+               appCall@AppCallbacks{..} appCh appChanRxInternal lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
   hParam  <- makeHeightParameters appValidatorKey stateView appCall
