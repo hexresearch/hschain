@@ -34,18 +34,18 @@ import HSChain.Internal.Types.Consensus
 
 
 -- | Status of block validation.
-data BlockValState m a
-  = UntestedBlock !(Block a)
+data BlockValState view
+  = UntestedBlock !(BlockOf view)
   -- ^ We haven't validated block yet
   | UnknownBlock
   -- ^ We haven't even seen block yet
-  | GoodBlock     !(Block a) !(StateView m a)
+  | GoodBlock     !(BlockOf view) !view
   -- ^ Block is good. We also cache state and new validator set
   | InvalidBlock  !Value
   -- ^ Block is invalid so there's no point in storing (and gossiping)
   --   it.
 
-blockFromBlockValidation :: BlockValState m a -> Maybe (Block a)
+blockFromBlockValidation :: BlockValState view -> Maybe (BlockOf view)
 blockFromBlockValidation = \case
   UntestedBlock b   -> Just b
   GoodBlock     b _ -> Just b
@@ -53,25 +53,25 @@ blockFromBlockValidation = \case
   InvalidBlock  _   -> Nothing
 
 
-data Props m a = Props
-  { propsBIDmap   :: !(Map (BlockID a) (BlockValState m a))
-  , propsRoundMap :: !(Map Round (BlockID a))
+data Props view = Props
+  { propsBIDmap   :: !(Map (BlockIdOf view) (BlockValState view))
+  , propsRoundMap :: !(Map Round (BlockIdOf view))
   }
 
-emptyProps :: Props m a
+emptyProps :: Props view
 emptyProps = Props mempty mempty
 
-proposalByBID :: Props m a -> BlockID a -> BlockValState m a
+proposalByBID :: Props view -> BlockIdOf view -> BlockValState view
 proposalByBID Props{..} bid
   = fromMaybe UnknownBlock
   $ bid `Map.lookup` propsBIDmap
 
-proposalByR :: Props m a -> Round -> Maybe (BlockID a, BlockValState m a)
+proposalByR :: Props view -> Round -> Maybe (BlockIdOf view, BlockValState view)
 proposalByR ps@Props{..} r = do
   bid <- r   `Map.lookup` propsRoundMap
   return (bid, proposalByBID ps bid)
 
-setProposalValidation :: BlockID a -> Either Value (StateView m a) -> Props m a -> Props m a
+setProposalValidation :: BlockIdOf view -> Either Value view -> Props view -> Props view
 setProposalValidation bid mst Props{..} = Props
   { propsBIDmap = Map.adjust update bid propsBIDmap
   , ..
@@ -90,7 +90,7 @@ setProposalValidation bid mst Props{..} = Props
         InvalidBlock e  -> error $ "CANT HAPPEN: Marking bad as good" ++ show e
 
 
-acceptBlockID :: Round -> BlockID a -> Props m a -> Props m a
+acceptBlockID :: Round -> BlockIdOf view -> Props view -> Props view
 acceptBlockID r bid Props{..} = Props
   { propsRoundMap = Map.insert r bid propsRoundMap
   -- NOTE: We can already have block with given BID in map. It could
@@ -101,7 +101,7 @@ acceptBlockID r bid Props{..} = Props
                               ) bid propsBIDmap
   }
 
-addBlockToProps :: (Crypto (Alg a)) => Block a -> Props m a -> Props m a
+addBlockToProps :: (Crypto (AlgOf view)) => BlockOf view -> Props view -> Props view
 addBlockToProps blk Props{..} = Props
   { propsBIDmap = Map.adjust (\case
                                  UnknownBlock -> UntestedBlock blk

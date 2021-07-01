@@ -4,6 +4,7 @@
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies        #-}
 -- |
 -- Helper function for running mock network of HSChain nodes
 module HSChain.Run (
@@ -28,6 +29,7 @@ import Control.Concurrent.STM         (atomically)
 import Control.Concurrent.STM.TBQueue (lengthTBQueue)
 import Katip (sl)
 
+import HSChain.Crypto (Hashed)
 import HSChain.Blockchain.Internal.Engine
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control.Class
@@ -48,14 +50,14 @@ import HSChain.Types
 ----------------------------------------------------------------
 
 -- | Specification of node
-data NodeDescription m a = NodeDescription
-  { nodeValidationKey :: !(Maybe (PrivValidator (Alg a)))
+data NodeDescription m view = NodeDescription
+  { nodeValidationKey :: !(Maybe (PrivValidator (AlgOf view)))
     -- ^ Private key of validator.
-  , nodeGenesis       :: !(Genesis a)
+  , nodeGenesis       :: !(Genesis (BlockType view))
     -- ^ Genesis block of node
-  , nodeCallbacks     :: !(AppCallbacks m a)
+  , nodeCallbacks     :: !(AppCallbacks m (BlockType view))
     -- ^ Callbacks with monoidal structure
-  , nodeStateView     :: !(StateView m a)
+  , nodeStateView     :: !view
     -- ^ Object that allows to process 
   , nodeNetwork       :: !BlockchainNet
     -- ^ Dictionary of functions to communicate with other nodes over
@@ -75,24 +77,24 @@ data BlockchainNet = BlockchainNet
 --   need to run something else along them.
 runNode
   :: ( MonadDB m, MonadCached a m, MonadMask m, MonadFork m, MonadLogger m, MonadTMMonitoring m
-     , BlockData a, Eq a, Show a
+     , BlockData a, Eq a, Show a, a ~ BlockType view, StateView view, ViewConstraints view m
      )
   => Configuration app         -- ^ Timeouts for network and consensus
-  -> NodeDescription m a       -- ^ Description of node.
+  -> NodeDescription m view    -- ^ Description of node.
+  -> Mempool (Hashed (Alg a) (TX a)) (TX a)
   -> m [m ()]
-runNode Configuration{..} NodeDescription{..} = do
+runNode Configuration{..} NodeDescription{..} mempool = do
   let BlockchainNet{..}  = nodeNetwork
   appCh <- newAppChans cfgConsensus
   initDatabase
   st    <- initializeBlockchain nodeGenesis nodeStateView
   return
     [ id $ descendNamespace "net"
-         $ startPeerDispatcher cfgNetwork bchNetwork bchInitialPeers appCh
-           (stateMempool st)
+         $ startPeerDispatcher cfgNetwork bchNetwork bchInitialPeers appCh mempool
     , id $ descendNamespace "consensus"
          $ runApplication cfgConsensus nodeValidationKey st nodeCallbacks appCh
     , descendNamespace "mempool" $ forever $ do
-        MempoolInfo{..} <- mempoolInfo $ stateMempool st
+        MempoolInfo{..} <- mempoolInfo mempool
         usingGauge prometheusMempoolSize      mempool'size
         usingGauge prometheusMempoolDiscarded mempool'discarded
         usingGauge prometheusMempoolFiltered  mempool'filtered
@@ -114,7 +116,7 @@ runNode Configuration{..} NodeDescription{..} = do
 ----------------------------------------------------------------
 
 -- | Callback which allow block creation only if mempool is not empty
-nonemptyMempoolCallback :: (MonadIO m) => Mempool m alg tx -> AppCallbacks m a
+nonemptyMempoolCallback :: (MonadIO m) => Mempool alg tx -> AppCallbacks m a
 nonemptyMempoolCallback mempool = mempty
   { appCanCreateBlock = \_ -> do
       n <- mempoolSize mempool

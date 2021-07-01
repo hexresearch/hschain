@@ -16,7 +16,7 @@ import HSChain.Store
 import HSChain.Store.Internal.BlockDB
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
-
+import HSChain.Internal.Types.Consensus
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Monad
 import HSChain.P2P.PeerState.Types
@@ -53,14 +53,16 @@ advancePeer step@(FullStep h _ _) = setFinalState $ \_ -> do
 
 
 -- | Dictionary of handlers for messages for each state of peer.
-data HandlerDict s a m = HandlerDict
-  { handlerGossipMsg        :: forall n. Config n a -> GossipMsg a -> TransitionT s a m ()
+data HandlerDict s view m = HandlerDict
+  { handlerGossipMsg        :: Config view
+                            -> GossipMsg (BlockType view)
+                            -> TransitionT s (BlockType view) m ()
     -- ^ Handler for incoming gossip. It's used for outgoing gossip as
     -- well with minor modifications.
-  , advanceOurHeight        :: FullStep -> TransitionT s a m ()
+  , advanceOurHeight        :: FullStep -> TransitionT s (BlockType view) m ()
     -- ^ Handler for outgoing 'AnnStep'
-  , handlerProposalTimeout  :: forall n. Config n a -> s a -> m [GossipMsg a]
-  , handlerPrevoteTimeout   :: forall n. Config n a -> s a -> m [GossipMsg a]
-  , handlerPrecommitTimeout :: forall n. Config n a -> s a -> m [GossipMsg a]
-  , handlerBlocksTimeout    :: forall n. Config n a -> s a -> m [GossipMsg a]
+  , handlerProposalTimeout  :: Config view -> s (BlockType view) -> m [GossipMsg (BlockType view)]
+  , handlerPrevoteTimeout   :: Config view -> s (BlockType view) -> m [GossipMsg (BlockType view)]
+  , handlerPrecommitTimeout :: Config view -> s (BlockType view) -> m [GossipMsg (BlockType view)]
+  , handlerBlocksTimeout    :: Config view -> s (BlockType view) -> m [GossipMsg (BlockType view)]
   }

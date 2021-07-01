@@ -10,6 +10,7 @@ module HSChain.P2P.PeerState.Handle.Ahead
 import Control.Lens
 import Control.Monad
 
+import HSChain.Internal.Types.Consensus
 import HSChain.Internal.Types.Messages
 import HSChain.Store
 import HSChain.Types.Blockchain
@@ -22,7 +23,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set        as Set
 
 
-handler :: HandlerCtx a m => HandlerDict AheadState a m
+handler :: HandlerCtx (BlockType view) m => HandlerDict AheadState view m
 handler = HandlerDict
   { handlerGossipMsg        = const handlerGossip
   , advanceOurHeight        = advanceOurHeightWrk

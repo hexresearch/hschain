@@ -7,6 +7,7 @@
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies        #-}
 
 module HSChain.P2P.Internal
   ( module HSChain.P2P.Internal
@@ -44,6 +45,7 @@ import HSChain.Control.Util
 import HSChain.Control.Channels
 import HSChain.Crypto (Hashed)
 import HSChain.Internal.Types.Config
+import HSChain.Internal.Types.Consensus
 import HSChain.Logger
 import HSChain.Mempool
 import HSChain.Monitoring
@@ -67,11 +69,11 @@ retryPolicy NetworkCfg{..} = exponentialBackoff (reconnectionDelay * 1000)
 -- Thread which accepts connections from remote nodes
 acceptLoop
   :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m, MonadCached a m, MonadTMMonitoring m
-     , BlockData a)
+     , BlockData a, a ~ BlockType view)
   => NetworkCfg app
   -> NetworkAPI
-  -> PeerChans n a
-  -> Mempool m (Hashed (Alg a) (TX a)) (TX a)
+  -> PeerChans view
+  -> Mempool (Hashed (Alg a) (TX a)) (TX a)
   -> m ()
 acceptLoop cfg NetworkAPI{..} peerCh mempool = do
   logger DebugS "Starting accept loop" ()
@@ -104,12 +106,12 @@ acceptLoop cfg NetworkAPI{..} peerCh mempool = do
 -- Initiate connection to remote host and register peer
 connectPeerTo
   :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m, MonadCached a m, MonadTMMonitoring m
-     , BlockData a
+     , BlockData a, a ~ BlockType view
      )
   => NetworkAPI
   -> NetAddr
-  -> PeerChans n a
-  -> Mempool m (Hashed (Alg a) (TX a)) (TX a)
+  -> PeerChans view
+  -> Mempool (Hashed (Alg a) (TX a)) (TX a)
   -> m ()
 connectPeerTo NetworkAPI{..} addr peerCh mempool =
   -- Ignore all exceptions to prevent apparing of error messages in stderr/stdout.
@@ -134,12 +136,12 @@ connectPeerTo NetworkAPI{..} addr peerCh mempool =
 --   established and peer is registered.
 startPeer
   :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m, MonadCached a m, MonadTMMonitoring m
-     , BlockData a)
+     , BlockData a, a ~ BlockType view)
   => NetAddr
-  -> PeerChans n a         -- ^ Communication with main application
+  -> PeerChans view        -- ^ Communication with main application
                            --   and peer dispatcher
   -> P2PConnection         -- ^ Functions for interaction with network
-  -> Mempool m (Hashed (Alg a) (TX a)) (TX a)
+  -> Mempool (Hashed (Alg a) (TX a)) (TX a)
   -> m ()
 startPeer peerAddrTo peerCh@PeerChans{..} conn mempool = logOnException $
   descendNamespace (T.pack (show peerAddrTo)) $ logOnException $ do
@@ -159,8 +161,8 @@ startPeer peerAddrTo peerCh@PeerChans{..} conn mempool = logOnException $
 -- | Routine for receiving messages from peer
 peerFSM
   :: ( MonadReadDB m, MonadCached a m, MonadIO m, MonadMask m, MonadLogger m
-     , BlockData a)
-  => PeerChans n a
+     , BlockData a, a ~ BlockType view)
+  => PeerChans view
   -> TBQueue (GossipMsg a)
   -> TChan (GossipMsg a)
   -> MempoolCursor (Hashed (Alg a) (TX a)) (TX a)
@@ -193,7 +195,7 @@ peerFSM peerCh@PeerChans{..} gossipCh recvCh MempoolCursor{..} = logOnException 
 
 handlePexMessage
   :: (MonadIO m, MonadLogger m)
-  => PeerChans n a -> TBQueue (GossipMsg a) -> PexMessage -> m ()
+  => PeerChans view -> TBQueue (GossipMsg a) -> PexMessage -> m ()
 handlePexMessage PeerChans{..} gossipCh = \case
   -- Peer ask for more addresses. Reply with list of peers we're
   -- connected to. They're known good
@@ -211,7 +213,7 @@ handlePexMessage PeerChans{..} gossipCh = \case
 mempoolThread
   :: (MonadLogger m, MonadCatch m, MonadIO m)
   => TBQueue (GossipMsg a)
-  -> Mempool m (Hashed alg (TX a)) (TX a)
+  -> Mempool (Hashed alg (TX a)) (TX a)
   -> m b
 mempoolThread gossipCh Mempool{..} = do
   ch <- atomicallyIO makeNewTxBroadcast
@@ -293,11 +295,11 @@ countGossip dir = \case
 
 pexFSM
   :: (MonadLogger m, MonadMask m, MonadTMMonitoring m
-     , MonadFork m, MonadReadDB m, MonadCached a m, BlockData a)
+     , MonadFork m, MonadReadDB m, MonadCached a m, BlockData a, a ~ BlockType view)
   => NetworkCfg app
   -> NetworkAPI
-  -> PeerChans n a
-  -> Mempool m (Hashed (Alg a) (TX a)) (TX a)
+  -> PeerChans view
+  -> Mempool (Hashed (Alg a) (TX a)) (TX a)
   -> m b
 pexFSM cfg net peerCh@PeerChans{..} mempool = descendNamespace "PEX" $ do
   -- Start by connecting to peers

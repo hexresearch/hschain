@@ -5,13 +5,14 @@ module HSChain.P2P.PeerState.Handle.Unknown
   ( handler
   ) where
 
+import HSChain.Internal.Types.Consensus
 import HSChain.Internal.Types.Messages
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Monad
 import HSChain.P2P.PeerState.Types
 import HSChain.P2P.PeerState.Handle.Utils
 
-handler :: (HandlerCtx a m) => HandlerDict UnknownState a m
+handler :: (HandlerCtx (BlockType view) m) => HandlerDict UnknownState view m
 handler = HandlerDict
   { handlerGossipMsg        = const handlerGossip
   , advanceOurHeight        = \_   -> return ()

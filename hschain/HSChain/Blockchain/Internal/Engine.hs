@@ -7,6 +7,7 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeFamilies        #-}
 -- |
 -- Core of blockchain application. This module provides function which
 -- continuously updates blockchain using consensus algorithm and
@@ -56,7 +57,7 @@ import HSChain.Types.Validators
 --
 ----------------------------------------------------------------
 
-newAppChans :: (MonadIO m) => ConsensusCfg app -> m (AppChans m a)
+newAppChans :: (MonadIO m) => ConsensusCfg app -> m (AppChans view)
 newAppChans ConsensusCfg{incomingQueueSize = sz} = do
   appChanRx         <- liftIO $ newTBQueueIO sz
   appChanTx         <- liftIO   newBroadcastTChanIO
@@ -65,9 +66,9 @@ newAppChans ConsensusCfg{incomingQueueSize = sz} = do
 
 rewindBlockchainState
   :: ( MonadDB m, MonadIO m, MonadThrow m, MonadCached a m
-     , Crypto (Alg a), BlockData a)
-  => StateView m a
-  -> m (StateView m a)
+     , Crypto (Alg a), BlockData a, a ~ BlockType view, StateView view
+     , ViewConstraints view m)
+  => view -> m view
 rewindBlockchainState st0 = do
   -- We need to generate validator set for H=1. We do so in somewhat
   -- fragile way.
@@ -114,10 +115,9 @@ rewindBlockchainState st0 = do
 -- | Initialize blockchain: if we initialize fresh blockchain, compute
 --   validator set for H=1 and
 initializeBlockchain
-  :: (MonadDB m, MonadCached a m, MonadThrow m, MonadIO m, BlockData a, Show a, Eq a)
-  => Genesis a
-  -> StateView m a
-  -> m (StateView m a)
+  :: (MonadDB m, MonadCached a m, MonadThrow m, MonadIO m, BlockData a, Show a, Eq a
+     , a ~ BlockType view, StateView view, ViewConstraints view m)
+  => Genesis a -> view -> m view
 initializeBlockchain genesis stateView  = do
   mustQueryRW $ storeGenesis genesis
   rewindBlockchainState stateView
@@ -134,13 +134,16 @@ runApplication
      , MonadMask m
      , MonadLogger m
      , MonadTMMonitoring m
-     , BlockData a)
-  => ConsensusCfg app
-     -- ^ Configuration
+     , BlockData a
+     , a ~ BlockType view
+     , StateView view
+     , ViewConstraints view m
+     )
+  => ConsensusCfg app              -- ^ Configuration
   -> Maybe (PrivValidator (Alg a)) -- ^ Private key of validator
-  -> StateView    m a              -- ^ View on blockchain state
+  -> view                          -- ^ View on blockchain state
   -> AppCallbacks m a
-  -> AppChans     m a              -- ^ Channels for communication with peers
+  -> AppChans     view             -- ^ Channels for communication with peers
   -> m ()
 runApplication config appValidatorKey stateView appCall appCh = logOnException $ do
   logger InfoS "Starting consensus engine" ()
@@ -156,21 +159,23 @@ runApplication config appValidatorKey stateView appCall appCh = logOnException $
 -- going to commit at current height, then stores it in database and
 -- returns commit.
 decideNewBlock
-  :: ( MonadDB m
+  :: forall m view a app.
+     ( MonadDB m
      , MonadCached a m
      , MonadIO m
      , MonadMask m
      , MonadLogger m
      , MonadTMMonitoring m
-     , Crypto (Alg a), BlockData a)
+     , Crypto (Alg a), BlockData a
+     , a ~ BlockType view, StateView view, ViewConstraints view m)
   => ConsensusCfg app
   -> Maybe (PrivValidator (Alg a))
-  -> StateView    m a
+  -> view
   -> AppCallbacks m a
-  -> AppChans     m a
+  -> AppChans     view
   -> TQueue (MessageRx 'Unverified a)
   -> Maybe (Commit a)
-  -> m (Commit a, StateView m a)
+  -> m (Commit a, view)
 decideNewBlock config appValidatorKey
                stateView
                appCall@AppCallbacks{..} appCh appChanRxInternal lastCommt = do
@@ -179,7 +184,8 @@ decideNewBlock config appValidatorKey
   hParam  <- makeHeightParameters appValidatorKey stateView appCall
   -- Run consensus engine
   (cmt, blk, st') <- runEffect $ do
-    let sink = handleEngineMessage hParam config appCh appChanRxInternal
+    let sink :: Consumer (EngineMessage a) m r
+        sink = handleEngineMessage hParam config appCh appChanRxInternal
     tm0 <-  newHeight hParam lastCommt
         >-> sink
     rxMessageSource hParam appCh appChanRxInternal
@@ -200,13 +206,15 @@ decideNewBlock config appValidatorKey
     commitState st'
   return (cmt, st'')
 
+  
 -- Producer for MessageRx. First we replay WAL and then we read
 -- messages from channels.
 rxMessageSource
-  :: ( MonadIO m, MonadDB m, MonadLogger m, MonadCached a m
-     , Crypto (Alg a), BlockData a)
-  => HeightParameters m a
-  -> AppChans m a
+  :: forall m a view r.
+     ( MonadIO m, MonadDB m, MonadLogger m, MonadCached a m
+     , Crypto (Alg a), BlockData a, a ~ BlockType view, ViewConstraints view m)
+  => HeightParameters m view
+  -> AppChans view
   -> TQueue (MessageRx 'Unverified a)
   -> Producer (MessageRx 'Verified a) m r
 rxMessageSource HeightParameters{..} AppChans{..} appChanRxInternal = do
@@ -223,9 +231,10 @@ rxMessageSource HeightParameters{..} AppChans{..} appChanRxInternal = do
     >-> verify
     >-> Pipes.chain (mustQueryRW . writeToWAL currentH . unverifyMessageRx)
   where
-    verify  = verifyMessageSignature oldValidatorSet hValidatorSet currentH
-    -- NOTE: We try to read internal messages first. This is needed to
-    --       ensure that timeouts are delivered in timely manner
+    verify :: forall r. Pipe (MessageRx 'Unverified a) (MessageRx 'Verified a) m r
+    verify = verifyMessageSignature oldValidatorSet hValidatorSet currentH
+    -- -- NOTE: We try to read internal messages first. This is needed to
+    -- --       ensure that timeouts are delivered in timely manner
     readMsg = forever $ yield =<< atomicallyIO (  readTQueue  appChanRxInternal
                                               <|> readTBQueue appChanRx)
 
@@ -238,14 +247,15 @@ rxMessageSource HeightParameters{..} AppChans{..} appChanRxInternal = do
 --  2. Collect stragglers precommits.
 msgHandlerLoop
   :: ( MonadReadDB m, MonadThrow m, MonadIO m, MonadLogger m, MonadCached a m
-     , Crypto (Alg a), Exception (BChError a))
-  => HeightParameters m a
-  -> StateView m a
-  -> AppChans  m a
-  -> TMState   m a
+     , Crypto (Alg a), Exception (BChError a)
+     , a ~ BlockType view, StateView view, ViewConstraints view m)
+  => HeightParameters m view
+  -> view
+  -> AppChans  view
+  -> TMState   view
   -> Pipe (MessageRx 'Verified a) (EngineMessage a) m
-      (Commit a, Block a, StateView m a)
-msgHandlerLoop hParam StateView{..} AppChans{..} = mainLoop Nothing
+      (Commit a, Block a, view)
+msgHandlerLoop hParam view AppChans{..} = mainLoop Nothing
   where
     height = currentH hParam
     mainLoop mCmt tm = do
@@ -265,17 +275,17 @@ msgHandlerLoop hParam StateView{..} AppChans{..} = mainLoop Nothing
         GoodBlock     b st -> return (cmt, b, st)
         UntestedBlock b    -> lift $ do
           valSet <- queryRO $ mustRetrieveValidatorSet height
-          st     <- throwLeft =<< validatePropBlock b valSet
+          st     <- throwLeft =<< validatePropBlock view b valSet
           return (cmt, b, st)
 
 
 -- Handle message and perform state transitions for both
 handleVerifiedMessage
-  :: (MonadLogger m, Crypto (Alg a))
-  => HeightParameters m a
-  -> TMState m a
+  :: (MonadLogger m, Crypto (Alg a), a ~ BlockType view)
+  => HeightParameters m view
+  -> TMState view
   -> MessageRx 'Verified a
-  -> Pipe x (EngineMessage a) m (ConsensusResult m a (TMState m a))
+  -> Pipe x (EngineMessage a) m (ConsensusResult view (TMState view))
 handleVerifiedMessage hParam tm = \case
   RxProposal  p -> runConsesusM $ tendermintTransition hParam (ProposalMsg  p) tm
   RxPreVote   v -> runConsesusM $ tendermintTransition hParam (PreVoteMsg   v) tm
@@ -287,7 +297,7 @@ handleVerifiedMessage hParam tm = \case
 -- Verify signature of message. If signature is not correct message is
 -- simply discarded.
 verifyMessageSignature
-  :: (MonadLogger m, Crypto (Alg a))
+  :: forall m a r. (MonadLogger m, Crypto (Alg a))
   => ValidatorSet (Alg a)
   -> ValidatorSet (Alg a)
   -> Height
@@ -312,22 +322,29 @@ verifyMessageSignature oldValSet valSet height = forever $ do
     RxTimeout   t  -> yield $ RxTimeout t
     RxBlock     b  -> yield $ RxBlock   b
   where
+    -- FIXME: No Let polymorphism
+    verify :: (CryptoHashable msg)
+           => Text
+           -> (Signed 'Verified (Alg a) msg -> MessageRx 'Verified a)
+           -> Signed 'Unverified (Alg a) msg
+           -> Pipe x (MessageRx 'Verified a) m ()
     verify    con = verifyAny valSet    con
     verifyOld con = verifyAny oldValSet con
-    verifyAny vset name con sx = case verifySignature vset sx of
-      Just sx' -> yield $ con sx'
-      Nothing  -> lift $ logger WarningS "Invalid signature"
-        (  sl "name" (name::Text)
-        <> sl "addr" (show (signedKeyInfo sx))
-        )
+
+verifyAny vset name con sx = case verifySignature vset sx of
+  Just sx' -> yield $ con sx'
+  Nothing  -> lift $ logger WarningS "Invalid signature"
+    (  sl "name" (name::Text)
+    <> sl "addr" (show (signedKeyInfo sx))
+    )
 
 
 handleEngineMessage
   :: ( MonadIO m, MonadTMMonitoring m, MonadDB m, MonadLogger m, MonadCached a m
-     , Crypto (Alg a))
-  => HeightParameters n a
+     , Crypto (Alg a), a ~ BlockType view)
+  => HeightParameters n view
   -> ConsensusCfg app
-  -> AppChans m a
+  -> AppChans view
   -> TQueue (MessageRx 'Unverified a)
   -> Consumer (EngineMessage a) m r
 handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} appChanRxInternal = forever $ await >>= \case
@@ -418,17 +435,18 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} appChanRx
 ----------------------------------------------------------------
 
 makeHeightParameters
-  :: forall m a.
+  :: forall m a view.
      ( MonadDB m
      , MonadCached a m
      , MonadIO m
      , MonadThrow m
      , MonadLogger m
-     , Crypto (Alg a), BlockData a)
+     , Crypto (Alg a), BlockData a
+     , a ~ BlockType view, StateView view, ViewConstraints view m)
   => Maybe (PrivValidator (Alg a))
-  -> StateView           m a
+  -> view
   -> AppCallbacks        m a
-  -> m (HeightParameters m a)
+  -> m (HeightParameters m view)
 makeHeightParameters appValidatorKey st AppCallbacks{appCanCreateBlock} = do
   bchH <- queryRO $ blockchainHeight
   let currentH = succ bchH

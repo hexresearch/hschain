@@ -28,7 +28,7 @@ import HSChain.Crypto.Containers
 import HSChain.Store.Internal.Proposals
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
-
+import HSChain.Internal.Types.Consensus
 
 ----------------------------------------------------------------
 -- Vote sets
@@ -68,22 +68,22 @@ instance Katip.LogItem ProposalState where
 
 
 -- | State for tendermint consensus at some particular height.
-data TMState m a = TMState
+data TMState view = TMState
   { smRound          :: !Round
     -- ^ Current round
   , smStep           :: !Step
     -- ^ Current step in the round
-  , smProposals      :: !(Map Round (Signed 'Verified (Alg a) (Proposal a)))
+  , smProposals      :: !(Map Round (Signed 'Verified (AlgOf view) (Proposal (BlockType view))))
     -- ^ Proposal for current round
-  , smProposedBlocks :: !(Props m a)
+  , smProposedBlocks :: !(Props view)
     -- ^ Proposed blocks and their validation state
-  , smPrevotesSet    :: !(HeightVoteSet 'PreVote a)
+  , smPrevotesSet    :: !(HeightVoteSet 'PreVote (BlockType view))
     -- ^ Set of all received valid prevotes
-  , smPrecommitsSet  :: !(HeightVoteSet 'PreCommit a)
+  , smPrecommitsSet  :: !(HeightVoteSet 'PreCommit (BlockType view))
     -- ^ Set of all received valid precommits
-  , smLockedBlock    :: !(Maybe (Round, BlockID a))
+  , smLockedBlock    :: !(Maybe (Round, BlockIdOf view))
     -- ^ Round and block we're locked on
-  , smLastCommit     :: !(Maybe (Commit a))                   -- TODO try strict Maybe
+  , smLastCommit     :: !(Maybe (Commit (BlockType view)))                   -- TODO try strict Maybe
     -- ^ Commit for previous block. Nothing if previous block is
     --   genesis block.
   }

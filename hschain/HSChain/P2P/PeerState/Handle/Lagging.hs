@@ -16,6 +16,7 @@ import Data.Foldable            (toList)
 import System.Random            (randomRIO)
 
 import HSChain.Crypto
+import HSChain.Internal.Types.Consensus
 import HSChain.Internal.Types.Messages
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Handle.Utils
@@ -29,7 +30,8 @@ import qualified Data.IntSet        as ISet
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict    as Map
 
-handler :: (BlockData a, HandlerCtx a m) => HandlerDict LaggingState a m
+handler :: (BlockData (BlockType view), HandlerCtx (BlockType view) m)
+        => HandlerDict LaggingState view m
 handler = HandlerDict
   { handlerGossipMsg        = const handlerGossip
   , advanceOurHeight        = \_ -> return ()

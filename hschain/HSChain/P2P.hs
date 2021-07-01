@@ -4,6 +4,7 @@
 {-# LANGUAGE RankNTypes           #-}
 {-# LANGUAGE RecordWildCards      #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
 -- |
 -- Mock P2P
@@ -30,6 +31,7 @@ import HSChain.Crypto (Hashed)
 import HSChain.Control.Util
 import HSChain.Mempool
 import HSChain.Internal.Types.Config
+import HSChain.Internal.Types.Consensus
 import HSChain.Logger
 import HSChain.Monitoring
 import HSChain.Network.Types
@@ -47,12 +49,12 @@ import HSChain.Types.Blockchain
 --   of nodes and gossip.
 startPeerDispatcher
   :: ( MonadMask m, MonadFork m, MonadLogger m, MonadReadDB m, MonadCached a m, MonadTMMonitoring m
-     , BlockData a)
+     , BlockData a, a ~ BlockType view)
   => NetworkCfg app
   -> NetworkAPI               -- ^ API for networking
   -> [NetAddr]                -- ^ Set of initial addresses to connect
-  -> AppChans n a             -- ^ Channels for communication with main application
-  -> Mempool m (Hashed (Alg a) (TX a)) (TX a)
+  -> AppChans view            -- ^ Channels for communication with main application
+  -> Mempool (Hashed (Alg a) (TX a)) (TX a)
   -> m ()
 startPeerDispatcher p2pCfg net addrs AppChans{..} mempool = logOnException $ do
   logger InfoS "Starting peer dispatcher" $ sl "seed" addrs

@@ -24,6 +24,7 @@ import GHC.Generics           (Generic)
 import HSChain.Control.Util                     (atomicallyIO)
 import HSChain.Control.Shepherd                 (Shepherd)
 import HSChain.Blockchain.Internal.Types        (TMState)
+import HSChain.Internal.Types.Consensus
 import HSChain.Internal.Types.Messages
 import HSChain.Internal.Types.Config
 import HSChain.Crypto                           (Crypto, SignedState(..), CryptoHashable(..))
@@ -76,12 +77,12 @@ data PexMessage
 
 --
 -- | Connection handed to process controlling communication with peer
-data PeerChans m a = PeerChans
-  { peerChanTx              :: !(TChan (MessageTx a))
+data PeerChans view = PeerChans
+  { peerChanTx              :: !(TChan (MessageTx (BlockType view)))
     -- ^ Broadcast channel for outgoing messages
-  , peerChanRx              :: !(MessageRx 'Unverified a -> STM ())
+  , peerChanRx              :: !(MessageRx 'Unverified (BlockType view) -> STM ())
     -- ^ STM action for sending message to main application
-  , consensusState          :: !(STM (Maybe (Height, TMState m a)))   -- TODO try strict Maybe and Tuple
+  , consensusState          :: !(STM (Maybe (Height, TMState view)))   -- TODO try strict Maybe and Tuple
     -- ^ Read only access to current state of consensus state machine
   , p2pConfig               :: !(NetworkCfg ())
   , peerShepherd            :: !Shepherd
