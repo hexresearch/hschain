@@ -73,7 +73,7 @@ data Mempool m tid tx = Mempool
   { getMempoolState       :: forall f. MonadIO f => f (MempoolState tid tx)
     -- ^ Get current state of mempool. It's updated after every
     --   command to mempool is processed.
-  , removeTxByHashes      :: [tid] -> m ()
+  , removeTxByHashes      :: forall f. MonadIO f => [tid] -> f ()
     -- ^ Remove transactions from mempool with given hashes.
   , startMempoolFiltering :: (tx -> m Bool) -> m ()
     -- ^ Command mempool to start filtering transactions asynchronously
