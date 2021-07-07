@@ -231,7 +231,7 @@ rxMessageSource HeightParameters{..} AppChans{..} appChanRxInternal = do
     >-> verify
     >-> Pipes.chain (mustQueryRW . writeToWAL currentH . unverifyMessageRx)
   where
-    verify :: forall r. Pipe (MessageRx 'Unverified a) (MessageRx 'Verified a) m r
+    verify :: forall x. Pipe (MessageRx 'Unverified a) (MessageRx 'Verified a) m x
     verify = verifyMessageSignature oldValidatorSet hValidatorSet currentH
     -- -- NOTE: We try to read internal messages first. This is needed to
     -- --       ensure that timeouts are delivered in timely manner
@@ -331,6 +331,13 @@ verifyMessageSignature oldValSet valSet height = forever $ do
     verify    con = verifyAny valSet    con
     verifyOld con = verifyAny oldValSet con
 
+verifyAny
+  :: (CryptoSign alg, CryptoHash alg, CryptoHashable a, MonadLogger m)
+  => ValidatorSet alg
+  -> Text
+  -> (Signed 'Verified alg a -> b)
+  -> Signed 'Unverified alg a
+  -> Pipe x b m ()
 verifyAny vset name con sx = case verifySignature vset sx of
   Just sx' -> yield $ con sx'
   Nothing  -> lift $ logger WarningS "Invalid signature"
