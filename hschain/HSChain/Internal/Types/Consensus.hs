@@ -1,8 +1,10 @@
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE FlexibleContexts   #-}
-{-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE RankNTypes         #-}
-{-# LANGUAGE TypeFamilies       #-}
+{-# LANGUAGE DerivingStrategies      #-}
+{-# LANGUAGE FlexibleContexts        #-}
+{-# LANGUAGE FlexibleInstances       #-}
+{-# LANGUAGE RankNTypes              #-}
+{-# LANGUAGE TypeFamilies            #-}
+{-# LANGUAGE UndecidableInstances    #-}
+{-# LANGUAGE UndecidableSuperClasses #-}
 -- |
 module HSChain.Internal.Types.Consensus (
     -- * Blockchain logic
@@ -11,6 +13,8 @@ module HSChain.Internal.Types.Consensus (
   , BlockOf
   , BlockIdOf
   , HeaderOf
+  , RunIO(..)
+    -- ** Mempool
   , MempoolHandle(..)
   , MempoolCursor(..)
     -- ** Logic of blockchain
@@ -18,7 +22,6 @@ module HSChain.Internal.Types.Consensus (
   , Genesis(..)
   ) where
 
-import HSChain.Crypto
 import HSChain.Mempool
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
@@ -33,8 +36,13 @@ type BlockIdOf view = BlockID (BlockType view)
 type BlockOf   view = Block   (BlockType view)
 type HeaderOf  view = Header  (BlockType view)
 
-class BlockData (BlockType view) => StateView view where
+newtype RunIO view = RunIO { runIO :: forall a. MinMonad view a -> IO a }
+
+class ( ViewConstraints view (MinMonad view)
+      , BlockData (BlockType view)
+      ) => StateView view where
   type BlockType       view :: *
+  type MinMonad        view :: * -> *
   type ViewConstraints view :: (* -> *) -> Constraint
   -- | Header of block corresponging to state.
   stateHeight   :: view -> Maybe Height
@@ -53,6 +61,8 @@ class BlockData (BlockType view) => StateView view where
                      => view
                      -> NewBlock (BlockType view)
                      -> m (BlockType view, view)
+  -- | Generate minimal runner for minimal monad
+  makeRunIO :: (ViewConstraints view m) => m (RunIO view)
 
 
 ----------------------------------------------------------------

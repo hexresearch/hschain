@@ -534,7 +534,6 @@ startConsensus
                 , ConsensusM ()
                 )
 startConsensus k = do
-  initDatabase
   chans <- newAppChans cfg
   ch    <- atomicallyIO $ dupTChan $ appChanTx chans
   st    <- initializeBlockchain genesis

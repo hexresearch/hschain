@@ -120,6 +120,7 @@ Test-suite hschain-tests
                      , hschain-control
                      , hschain-types
                      , hschain-net
+                     , hschain-db
                      , hschain-quickcheck
                      , hschain-examples
                      , aeson

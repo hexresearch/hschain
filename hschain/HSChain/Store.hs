@@ -36,6 +36,7 @@ module HSChain.Store (
   , closeConnection
   , withConnection
   , initDatabase
+  , initializeBlockhainTables
   , withDatabase
     -- * Querying database
     -- ** Query monads

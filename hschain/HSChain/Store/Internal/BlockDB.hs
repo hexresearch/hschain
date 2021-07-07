@@ -55,7 +55,7 @@ import HSChain.Crypto
 import HSChain.Exceptions
 import HSChain.Internal.Types.Messages
 import HSChain.Internal.Types.Consensus
-import HSChain.Store.Internal.Query
+import HSChain.Store.Internal.Query as DB
 import HSChain.Types.Blockchain
 import HSChain.Types.Merkle.Types
 import HSChain.Types.Validators
@@ -65,7 +65,7 @@ import HSChain.Types.Validators
 ----------------------------------------------------------------
 
 -- | Create tables for storing blockchain data
-initializeBlockhainTables :: Query 'RW a ()
+initializeBlockhainTables :: MonadQueryRW m => m ()
 initializeBlockhainTables = do
   -- Content addressable storage.
   --

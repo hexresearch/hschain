@@ -19,6 +19,9 @@ module HSChain.Mock.KeyVal (
   , Tx
   , BState
     -- * Running KeyVal
+  , KeyValState(..)
+  , kvHeight, kvValSet, kvState
+  , inMemoryStateView
   , KeyValDictM(..)
   , KeyValT(..)
   , runKeyValT
@@ -110,6 +113,7 @@ $(makeLenses ''KeyValState)
 instance StateView KeyValState where
   type BlockType       KeyValState = BData
   type ViewConstraints KeyValState = MonadIO
+  type MinMonad        KeyValState = IO
   stateHeight       = _kvHeight
   newValidators     = _kvValSet
   commitState       = pure
@@ -134,29 +138,20 @@ instance StateView KeyValState where
                , _kvState  = st'
                }
            )
-  
-  {-
--- | Create view on blockchain state which is kept completely in
---   memory
-inMemoryStateView :: MonadIO m => ValidatorSet (Alg BData) -> StateView m BData
-inMemoryStateView = make Nothing mempty
-  where
-    make mh st vals = r where
-      r = StateView
-        { stateHeight   = mh
-        , newValidators = vals
-        , commitState   = return r
-        , validatePropBlock = \b valSet -> return $ do
-        , generateCandidate = \NewBlock{..} -> do
-        , stateMempool = nullMempool hashed
-        }
--}
+  makeRunIO = pure $ RunIO id
+
 process :: Tx -> BState -> Either KeyValError BState
 process (k,v) m
   | k `Map.member` m = Left  $ KeyValError k
   | otherwise        = Right $! Map.insert k v m
 
 
+inMemoryStateView :: ValidatorSet (Alg BData) -> KeyValState
+inMemoryStateView valSet = KeyValState
+  { _kvHeight = Nothing
+  , _kvValSet = valSet
+  , _kvState  = mempty
+  }
 
 interpretSpec
   :: ( MonadDB m, MonadCached BData m, MonadFork m, MonadMask m, MonadLogger m
@@ -168,10 +163,7 @@ interpretSpec
   -> AppCallbacks m BData
   -> m (KeyValState, [m ()])
 interpretSpec genesis nspec bnet cfg cb = do
-  let state = KeyValState { _kvHeight = Nothing
-                          , _kvValSet = genesisValSet genesis
-                          , _kvState  = mempty
-                          }
+  let state = inMemoryStateView $ genesisValSet genesis
   acts  <- runNode cfg NodeDescription
     { nodeValidationKey = nspecPrivKey nspec
     , nodeGenesis       = genesis

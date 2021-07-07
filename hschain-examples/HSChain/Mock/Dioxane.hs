@@ -98,6 +98,7 @@ makeLenses ''DioState
 instance Dio tag => StateView (DioState tag) where
   type BlockType       (DioState tag) = BData tag
   type ViewConstraints (DioState tag) = Applicative
+  type MinMonad        (DioState tag) = IO
   stateHeight       = _dioHeight
   newValidators     = _dioValSet
   commitState       = pure
@@ -141,6 +142,7 @@ instance Dio tag => StateView (DioState tag) where
               $ userMap . each . userNonce %~ succ
               $ st
     pure ( txs, st')
+  makeRunIO = pure $ RunIO id
 
 process :: Tx -> Map.Map (PublicKey DioAlg) UserState -> Maybe (Map.Map (PublicKey DioAlg) UserState)
 process Tx{txBody=TxBody{..}} st = do

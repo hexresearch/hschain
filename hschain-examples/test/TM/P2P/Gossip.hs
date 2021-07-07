@@ -26,6 +26,7 @@ import HSChain.Control.Util
 import HSChain.Crypto
 import HSChain.Crypto.Containers
 import HSChain.Internal.Types.Messages
+import HSChain.Internal.Types.Consensus
 import HSChain.P2P
 import HSChain.P2P.PeerState.Types
 import HSChain.Store
@@ -217,17 +218,17 @@ data Event a = ETX     (MessageTx a)
              | ETimeout GossipTimeout
 
 type GossipM a = HSChainT a IO
-type TestM   a = StateT  (P2P.State a)
-                 ( ReaderT ( P2P.Config Maybe a
-                           , TVar (Maybe (Height, TMState Maybe a)))
-                 ( GossipM a
-                 ))
+
+type TestM   view
+  = StateT (P2P.State (BlockType view))
+    ( ReaderT ( P2P.Config view
+              , TVar (Maybe (Height, TMState view)))
+      (GossipM (BlockType view)))
 
 -- Start gossip FSM all alone
-withGossip :: Int -> TestM Mock.BData x -> IO x
+withGossip :: Int -> TestM Mock.KeyValState a -> IO a
 withGossip n action = do
   withDatabase "" $ \conn -> runHSChainT conn $ do
-    initDatabase
     mustQueryRW $ storeGenesis genesis
     consensusState <- liftIO $ newTVarIO Nothing
     let config = P2P.Config (readTVar consensusState)
@@ -249,7 +250,7 @@ seedDatabase n = do
                 $ mockchain `zip` (fmap merkleValue . blockPrevCommit <$> tail mockchain)
 
 -- Start "consensus engine"
-startConsensus :: TestM Mock.BData (Event Mock.BData)
+startConsensus :: TestM Mock.KeyValState (Event Mock.BData)
 startConsensus = do
   h     <- queryRO blockchainHeight
   varSt <- lift $ asks snd
@@ -267,7 +268,7 @@ startConsensus = do
 
 addProposal
   :: Signed 'Unverified (Alg Mock.BData) (Proposal Mock.BData)
-  -> TestM Mock.BData ()
+  -> TestM Mock.KeyValState ()
 addProposal p = do
   varSt <- lift $ asks snd
   atomicallyIO $ modifyTVar' varSt $ fmap $ second $ \tm -> tm
@@ -276,7 +277,7 @@ addProposal p = do
 
 addPrevote
   :: Signed 'Unverified (Alg Mock.BData) (Vote 'PreVote Mock.BData)
-  -> TestM Mock.BData ()
+  -> TestM Mock.KeyValState ()
 addPrevote v = do
   varSt <- lift $ asks snd
   atomicallyIO $ modifyTVar' varSt $ fmap $ second $ \tm -> tm
@@ -290,7 +291,7 @@ addPrevote v = do
 
 addPrecommit
   :: Signed 'Unverified (Alg Mock.BData) (Vote 'PreCommit Mock.BData)
-  -> TestM Mock.BData ()
+  -> TestM Mock.KeyValState ()
 addPrecommit v = do
   varSt <- lift $ asks snd
   atomicallyIO $ modifyTVar' varSt $ fmap $ second $ \tm -> tm
@@ -303,8 +304,9 @@ addPrecommit v = do
     }
 
 -- Perform single step
-step :: (BlockData a)
-     => Event a -> TestM a (P2P.State a, [Command a])
+step :: (BlockData (BlockType view))
+     => Event (BlockType view) -> TestM view ( P2P.State (BlockType view)
+                                             , [Command (BlockType view)])
 step e = do
   cfg       <- lift $ asks fst
   st        <- get
