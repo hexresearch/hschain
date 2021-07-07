@@ -66,6 +66,7 @@ Executable hschain-coin-node
                      , hschain-logger
                      , hschain-types
                      , hschain-control
+                     , hschain-db
                      , hschain-examples
                      , optparse-applicative >=0.14
                      , prometheus-client
