@@ -234,7 +234,7 @@ class (MonadQueryRO m) => MonadQueryRW m where
 
 -- | Transformer that provides 'MonadReadDB' and 'MonadDB' instances
 newtype DBT rw m a = DBT (ReaderT (Connection rw) m a)
-  deriving newtype ( Functor, Applicative, Monad, MonadFail, MonadIO
+  deriving newtype ( Functor, Applicative, Monad, Fail.MonadFail, MonadIO
                    , MonadThrow, MonadCatch, MonadMask)
 
 runDBT :: Connection rw -> DBT rw m a -> m a
