@@ -54,7 +54,7 @@ import HSChain.Types.Merkle.Types
 import HSChain.Arbitrary.Instances ()
 import qualified HSChain.Network.Mock as P2P
 import TM.Util.Network
-import TM.Util.MockChain (runHSChainT)
+import TM.Util.MockChain (InitExtra(..),runHSChainT)
 
 type VSet = ValidatorSet (Alg Tx)
 
@@ -180,6 +180,10 @@ data Tx = AddVal !(PublicKey (Alg Tx)) !Integer
   deriving stock    (Show,Eq,Ord,Generic)
   deriving anyclass (NFData,Serialise,ToJSON)
 
+instance InitExtra Tx where
+  data instance Extra Tx = ExtraTx
+  initExtra = pure ExtraTx
+
 instance CryptoHashable Tx where
   hashStep = genericHashStep "hschain"
 
@@ -205,32 +209,47 @@ Right valSet3 = makeValidatorSet [Validator k 1 | k <- [pk1,pk2,pk3    ]]
 Right valSet6 = makeValidatorSet [Validator k 1 | k <- [pk1,pk2,pk3,pk4]]
 Right valSet8 = makeValidatorSet [Validator k 1 | k <- [    pk2,pk3,pk4]]
 
-inMemoryStateView :: (Monad m) => ValidatorSet (Alg Tx) -> StateView m Tx
-inMemoryStateView = make Nothing
-  where
-    make mh vals = viewSt where
-      viewSt = StateView
-        { stateHeight   = mh
-        , newValidators = vals
-        , commitState   = return viewSt
-        , stateMempool  = nullMempool hashed
-        --
-        , validatePropBlock = \b _ -> return $ do
-            let tx = merkleValue $ blockData b
-            case makeValidatorSet $ process tx $ asValidatorList vals of
-              Left  _     -> Left ValErr
-              Right vals' -> Right $ make (Just $ blockHeight b) vals'
-        , generateCandidate = \NewBlock{..} -> do
-            let prop = case newBlockHeight of
-                  Height 3 -> AddVal pk3 1
-                  Height 6 -> AddVal pk4 1
-                  Height 8 -> RmVal  pk1
-                  _        -> Noop
-                Right vals' = makeValidatorSet $ process prop $ asValidatorList vals
-            return ( prop
-                   , make (Just newBlockHeight) vals'
-                   )
-        }
+data ValView = ValView
+  { viewH    :: !(Maybe Height)
+  , viewVals :: ValidatorSet (Alg Tx)
+  }
+
+instance StateView ValView where
+  type BlockType       ValView = Tx
+  type ViewConstraints ValView = Applicative
+  type MinMonad        ValView = IO
+  stateHeight   = viewH
+  newValidators = viewVals
+  commitState   = pure
+  makeRunIO = pure $ RunIO id
+  validatePropBlock ValView{..} b _ = pure $ do
+    let tx = merkleValue $ blockData b
+    case makeValidatorSet $ process tx $ asValidatorList viewVals of
+      Left  _     -> Left ValErr
+      Right vals' -> Right $ ValView (Just $ blockHeight b) vals'
+  generateCandidate ValView{..} NewBlock{..} = do
+    let prop = case newBlockHeight of
+          Height 3 -> AddVal pk3 1
+          Height 6 -> AddVal pk4 1
+          Height 8 -> RmVal  pk1
+          _        -> Noop
+        Right vals' = makeValidatorSet $ process prop $ asValidatorList viewVals
+    pure ( prop
+         , ValView (Just newBlockHeight) vals'
+         )
+  
+inMemoryStateView :: ValidatorSet (Alg Tx) -> ValView
+inMemoryStateView = ValView Nothing
+-- inMemoryStateView = make Nothing
+--   where
+--     make mh vals = viewSt where
+--       viewSt = StateView
+--         { stateHeight   = mh
+--         , newValidators = vals
+--         , commitState   = return viewSt
+--         , stateMempool  = nullMempool hashed
+--         --
+--         }
 
 -- We're permissive and allow remove nonexiting validator
 process :: Tx -> [Validator (Alg Tx)] -> [Validator (Alg Tx)]
@@ -262,6 +281,7 @@ interpretSpec genesis nspec bnet cfg cb = do
     , nodeCallbacks     = cb
     , nodeNetwork       = bnet
     }
+    (nullMempool hashed)
   conn <- askConnectionRW
   return (conn, acts)
 

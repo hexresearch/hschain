@@ -13,10 +13,12 @@
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TupleSections              #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE UndecidableInstances       #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 -- |
 -- Very simple UTXO coin intended for demonstration of hschain. As a
@@ -31,23 +33,28 @@ module HSChain.Mock.Coin (
   , BData(..)
     -- * Pure state
   , CoinState(..)
+  , CoinInMemory(..)
   , Unspent(..)
-  , UTXO(..)
-  , inMemoryStateView
+  , UTXO(..)  
     -- ** Transaction generator
   , TxGenerator(..)
+  , inMemoryStateView
   , makeCoinGenerator
   , transactionGenerator
   , generateTransaction
     -- * In-DB state
+  , CoinDB(..)
   , initCoinDB
   , databaseStateView
+  , CoinStatements
+  , newCoinStatements
     -- * Interpretation
     -- ** Monad
   , CoinT(..)
   , runCoinT
   , CoinDictM(..)
   , CoinSpecification(..)
+  , MonadCoinDB(..)
     -- ** Executing specification
   , coinGenesis
   , interpretSpec
@@ -58,6 +65,7 @@ import Codec.Serialise
 import Control.Arrow (second)
 import Control.Concurrent
 import Control.DeepSeq
+import Control.Lens
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Trans.Except (except)
@@ -132,6 +140,27 @@ validateTxContextFree (Send pubK sig txSend@TxSend{..}) = do
 -- In memory state handling
 ----------------------------------------------------------------
 
+-- | Specifications for mock coin status. It specify both genesis
+--   block and optionally transaction generator.
+data CoinSpecification = CoinSpecification
+ { coinAirdrop        :: !Integer
+   -- ^ Amount of coins allocated to each wallet
+ , coinWallets        :: !Int
+   -- ^ Number of wallets in use
+ , coinWalletsSeed    :: !Int
+   -- ^ Seed used to generate private keys for wallets
+ , coinGeneratorDelay :: !(Maybe Int)
+   -- ^ Delay between TX generation. Nothing means don't generate
+ , coinMaxMempoolSize :: !Int
+   -- ^ If mempool exceeds size new txs won't be generated
+ , coinMaxBlockSize   :: !Int
+   -- ^ Maximum number of transactions in block. Normally such things
+   --   are hardcoded but we pass it as parameter for the sake of
+   --   configurability.
+ }
+ deriving (Generic,Show)
+ deriving JSON.FromJSON via HSChainCfg CoinSpecification
+
 -- | State of coins in program-digestible format
 data CoinState = CoinState
   { unspentOutputs :: !(Map UTXO Unspent)
@@ -149,60 +178,92 @@ instance CryptoHashable CoinState where
   hashStep = genericHashStep "hschain"
 
 
+-- | In-memory coin state
+data CoinInMemory = CoinInMemory
+  { _coinState       :: CoinState  
+  , _coinHeight      :: Maybe Height
+  , _coinValSet      :: ValidatorSet (Alg BData)
+  , _coinLastBlockTx :: [Tx]
+  , _coinMempool     :: Mempool (Hashed (Alg BData) Tx) Tx
+  , _coinSpec        :: CoinSpecification
+  , _coinCurSt       :: IORef CoinState
+  }
+
+$(makeLenses ''CoinInMemory)
+
+instance StateView CoinInMemory where
+  type BlockType       CoinInMemory = BData
+  type ViewConstraints CoinInMemory = MonadIO
+  type MinMonad        CoinInMemory = IO
+  stateHeight       = _coinHeight
+  newValidators     = _coinValSet
+  --
+  commitState st    = do
+    let Mempool{..} = st^.coinMempool
+    removeTxByHashes      $ hashed <$> (st^.coinLastBlockTx)
+    startMempoolFiltering $ \tx -> return $ isRight $ processSend tx (st^.coinState)
+    liftIO $ writeIORef (st^.coinCurSt) (st^.coinState)
+    return st  
+  --
+  validatePropBlock st b valSet = do
+    let txs = unBData $ merkleValue $ blockData b
+        step s tx = do
+          validateTxContextFree tx
+          processTxFull (blockHeight b) tx s
+    return $ do
+      let maxBlock = st ^. coinSpec . to coinMaxBlockSize
+      when (blockHeight b > Height 0 && length txs > maxBlock) $
+        Left $ CoinError "Block is too big"
+      st' <- foldM step (st^.coinState) txs
+      return $ st
+        & coinState       .~ st'
+        & coinHeight      .~ Just (blockHeight b)
+        & coinValSet      .~ valSet
+        & coinLastBlockTx .~ txs
+  --
+  generateCandidate st NewBlock{..} = do
+    memSt <- st ^. coinMempool . to getMempoolState 
+    let selectTx 0 c _      = (c,[])
+        selectTx _ c []     = (c,[])
+        selectTx n c (t:tx) = case processSend t c of
+          Left  _  -> selectTx n c tx
+          Right c' -> let (c'', b  ) = selectTx (n-1) c' tx
+                      in  (c'', t:b)
+    let maxBlock   = st ^. coinSpec . to coinMaxBlockSize
+        (st', dat) = selectTx maxBlock (st^.coinState)
+                   $ toList memSt
+    return
+      ( BData dat
+      , st & coinState       .~ st'
+           & coinHeight      .~ (Just newBlockHeight)
+           & coinValSet      .~ newBlockValSet
+           & coinLastBlockTx .~ dat
+      )
+  --
+  makeRunIO = pure (RunIO id)
+
 -- | Create view on blockchain state which is kept completely in
 --   memory
 inMemoryStateView
   :: MonadIO m
   => CoinSpecification
   -> ValidatorSet (Alg BData)
-  -> m (StateView m BData, [m ()], IO CoinState)
-inMemoryStateView CoinSpecification{coinMaxBlockSize} valSet0 = do
+  -> m (CoinInMemory, [m ()], IO CoinState)
+inMemoryStateView spec valSet0 = do
   varSt <- liftIO $ newIORef $ CoinState mempty mempty
   (mem@Mempool{..}, memThr) <- newMempool hashed (isRight . validateTxContextFree)
-  let make mh vals txList st = r where
-        r = StateView
-          { stateHeight       = mh
-          , newValidators     = vals
-          -- For commit we simply remove transaction in block from
-          -- mempool and asking it to start filtering
-          , commitState       = do
-              removeTxByHashes $ hashed <$> txList
-              startMempoolFiltering $ \tx -> return $ isRight $ processSend tx st
-              liftIO $ writeIORef varSt st
-              return r
-          -- When we validate proposed block we want to do complete
-          -- validation since block is sent from outside
-          , validatePropBlock = \b valSet -> do
-              let txs = unBData $ merkleValue $ blockData b
-                  step s tx = do
-                    validateTxContextFree tx
-                    processTxFull (blockHeight b) tx s
-              return $ do
-                when (blockHeight b > Height 0 && length txs > coinMaxBlockSize) $
-                  Left $ CoinError "Block is too big"
-                st' <- foldM step st txs
-                return $ make (Just $ blockHeight b) valSet txs st'
-          --
-          , generateCandidate = \NewBlock{..} -> do
-              memSt  <- getMempoolState
-              let selectTx 0 c _      = (c,[])
-                  selectTx _ c []     = (c,[])
-                  selectTx n c (t:tx) = case processSend t c of
-                    Left  _  -> selectTx n c tx
-                    Right c' -> let (c'', b  ) = selectTx (n-1) c' tx
-                                in  (c'', t:b)
-              let (st', dat) = selectTx coinMaxBlockSize st
-                             $ toList memSt
-              return
-                ( BData dat
-                , make (Just newBlockHeight) newBlockValSet dat st'
-                )
-          , stateMempool      = mem
-          }
-  return ( make Nothing valSet0 [] (CoinState mempty mempty)
+  return ( CoinInMemory { _coinState       = CoinState mempty mempty
+                        , _coinHeight      = Nothing
+                        , _coinValSet      = valSet0
+                        , _coinMempool     = mem
+                        , _coinLastBlockTx = []
+                        , _coinSpec        = spec
+                        , _coinCurSt       = varSt
+                        }
          , [memThr]
          , readIORef varSt
          )
+
 
 -- |Process transaction performing complete validation.
 processTxFull :: Height -> Tx -> CoinState -> Either CoinError CoinState
@@ -289,19 +350,18 @@ makeCoinGenerator CoinSpecification{..} = liftIO $ do
   where
     privK = take coinWallets $ makePrivKeyStream coinWalletsSeed
 
-
 -- | Run generator for transactions
 transactionGenerator
   :: MonadIO m
   => TxGenerator
-  -> Mempool m (Hashed (Alg BData) Tx) Tx
+  -> Mempool (Hashed (Alg BData) Tx) Tx
   -> m CoinState
   -> (Tx -> m ())
   -> m a
-transactionGenerator gen mempool coinState push = forever $ do
+transactionGenerator gen mempool coinSt push = forever $ do
   size <- mempoolSize mempool
   when (maxN > 0 && size < maxN) $
-    push =<< generateTransaction gen =<< coinState
+    push =<< generateTransaction gen =<< coinSt
   liftIO $ threadDelay $ genDelay gen * 1000
   where
     maxN = genMaxMempoolSize gen
@@ -478,13 +538,98 @@ newCoinStatements = do
     \ ORDER BY random() LIMIT 20"
   return CoinStatements{..}
 
+
+data CoinDB = CoinDB
+  { _dbHeight  :: Maybe Height
+  , _dbValSet  :: ValidatorSet (Alg BData)
+  , _dbLastTx  :: [Tx]
+  , _dbMempool :: Mempool (Hashed (Alg BData) Tx) Tx
+  , _dbDiff    :: UtxoDiff
+  , _dbSpec    :: CoinSpecification
+  }
+$(makeLenses ''CoinDB)
+
+class (MonadIO m, MonadDB m, MonadCached BData m, MonadLogger m, MonadTMMonitoring m
+      ) => MonadCoinDB m where
+  coinStatements    :: m CoinStatements
+
+instance StateView CoinDB where
+  type BlockType       CoinDB = BData
+  type ViewConstraints CoinDB = MonadCoinDB
+  type MinMonad        CoinDB = (CoinT () IO)
+  stateHeight   = _dbHeight
+  newValidators = _dbValSet
+  --
+  commitState st = case st^.dbHeight of
+    Nothing -> return st
+    Just h  -> do
+      let Mempool{..} = st^.dbMempool
+      stmt <- coinStatements
+      -- Start filtering mempool. We can use existing overlay and write to DB in meantime
+      removeTxByHashes $ hashed <$> (st^.dbLastTx)
+      RunIO runIO <- makeRunIO @CoinDB
+      startMempoolFiltering $ \tx ->
+        runIO $ fmap isRight $ queryRO $ runExceptT $ dbProcessSend stmt (succ h) tx (st^.dbDiff)
+      -- We need to first store data in DB then filter mempool
+      mustQueryRW $ do
+        mapM_ (dbRecordDiff stmt) $ Map.toList $ utxoDiff $ st^.dbDiff
+      pure $ st & dbDiff   .~ UtxoDiff (succH (st^.dbHeight)) mempty
+                & dbLastTx .~ []
+  --
+  validatePropBlock st b valSet = do
+    stmt <- coinStatements
+    let maxSize = st ^. dbSpec . to coinMaxBlockSize
+    let step d tx
+          | h == Height 0 = dbProcessDeposit tx d
+          | otherwise     = do
+              except $ validateTxContextFree tx
+              dbProcessSend stmt h tx d
+          where
+            h = blockHeight b
+    let txs = unBData $ merkleValue $ blockData b
+    runExceptT $ do
+      when (blockHeight b > Height 0 && length txs > maxSize) $ throwError $
+        CoinError $ "Block too big: " ++ show (length txs) ++ "/" ++ show maxSize
+      diff' <- hoist queryRO $ foldM step (st^.dbDiff) txs
+      return $ st & dbHeight .~ (Just $ blockHeight b)
+                  & dbLastTx .~ txs
+                  & dbDiff   .~ diff'
+                  & dbValSet .~ valSet
+  --
+  generateCandidate st NewBlock{..} = do
+    stmt <- coinStatements
+    let maxSize = st ^. dbSpec . to coinMaxBlockSize
+    let selectTx 0 d _  = return (d, [])
+        selectTx _ d [] = return (d,[])
+        selectTx n d (t:tx) =
+          runExceptT (dbProcessSend stmt newBlockHeight t d) >>= \case
+            Left  _  -> selectTx n d tx
+            Right d' -> second (t:) <$> selectTx (n-1) d' tx
+    memSt       <- getMempoolState $ st^.dbMempool
+    (diff',txs) <- queryRO $ selectTx maxSize (st^.dbDiff) $ toList memSt
+    pure ( BData txs
+         , st & dbHeight .~ Just newBlockHeight
+              & dbLastTx .~ txs
+              & dbValSet .~ newBlockValSet
+              & dbDiff   .~ diff'
+         )
+  --
+  makeRunIO = do
+    dictStmt   <- coinStatements
+    dictCached <- askCached
+    dictConn   <- askConnectionRW
+    return $ RunIO $ runCoinT CoinDictM { dictGauges    = ()
+                                        , dictNamespace = error "FIXME: No logging for now"
+                                        , dictLogEnv    = error "FIXME: No logging for now"
+                                        , ..
+                                        }
+
 databaseStateView
   :: (MonadIO m, MonadMask m, MonadDB m, MonadCached BData m)
   => CoinSpecification
   -> ValidatorSet (Alg BData)
-  -> m (StateView m BData, [m ()], CoinStatements)
-databaseStateView CoinSpecification{coinMaxBlockSize} valSetH0 = do
-  stmt <- newCoinStatements
+  -> m (CoinDB, [m ()])
+databaseStateView spec valSetH0 = do
   (mem@Mempool{..}, memThr) <- newMempool hashed (isRight . validateTxContextFree)
   -- First we find what is latest height at which we updated state and
   -- use it as startign point for our state management.
@@ -492,75 +637,27 @@ databaseStateView CoinSpecification{coinMaxBlockSize} valSetH0 = do
     [h] <- fmap fromOnly <$> basicQuery "SELECT MAX(h_added) FROM coin_utxo" ()
     v   <- retrieveValidatorSet $ succH h
     return (h, fromMaybe valSetH0 v)
-  -- Create state view. Parameters meaning:
   --
-  --   - viewH  - which height is already written to database
-  --   - txList - list of transcation to remove duting commit
-  --   - vals   - validator set after
-  let make stateH txList vals diff = sview where
-        sview = StateView
-          { stateHeight   = stateH
-          , newValidators = vals
-          --
-          , commitState   = case stateH of
-              Nothing -> return sview
-              Just h  -> do
-                -- Filter mempool
-                removeTxByHashes $ hashed <$> txList
-                mustQueryRW $ do
-                  mapM_ (dbRecordDiff stmt) $ Map.toList $ utxoDiff diff
-                -- We ask mempool to start filtering TX after we done writing
-                startMempoolFiltering $ \tx ->
-                  fmap isRight $ queryRO $ runExceptT $ dbProcessSend stmt (succ h) tx diff
-                return $ make stateH [] vals (UtxoDiff (succH stateH) Map.empty)
-          --
-          , validatePropBlock = \b valSet -> do
-              let step d tx
-                    | h == Height 0 = dbProcessDeposit tx d
-                    | otherwise     = do
-                        except $ validateTxContextFree tx
-                        dbProcessSend stmt h tx d
-                    where
-                      h = blockHeight b
-              let txs = unBData $ merkleValue $ blockData b
-              runExceptT $ do
-                when (blockHeight b > Height 0 && length txs > coinMaxBlockSize) $ throwError $
-                  CoinError $ "Block too big: " ++ show (length txs) ++ "/" ++ show coinMaxBlockSize
-                diff' <- hoist queryRO $ foldM step diff txs
-                return $ make (Just $ blockHeight b) txs valSet diff'
-          --
-          , generateCandidate = \NewBlock{..} -> do
-              let selectTx 0 d _  = return (d, [])
-                  selectTx _ d [] = return (d,[])
-                  selectTx n d (t:tx) =
-                    runExceptT (dbProcessSend stmt newBlockHeight t d) >>= \case
-                      Left  _  -> selectTx n d tx
-                      Right d' -> second (t:) <$> selectTx (n-1) d' tx
-              --
-              memSt <- getMempoolState
-              (diff',txs) <- queryRO $ selectTx coinMaxBlockSize diff $ toList memSt
-              return ( BData txs
-                     , make (Just newBlockHeight) txs newBlockValSet diff'
-                     )
-          -- Mempool
-          , stateMempool = mem
-          }
-  -- Read
-  return ( make h0 [] valSet0 (UtxoDiff (succH h0) Map.empty)
-         , [memThr]
-         , stmt
-         )
-  where
-    succH = maybe (Height 0) succ
+  pure
+    ( CoinDB { _dbHeight  = h0
+             , _dbValSet  = valSet0
+             , _dbLastTx  = []
+             , _dbMempool = mem
+             , _dbDiff    = UtxoDiff (succH h0) mempty
+             , _dbSpec    = spec
+             }
+    , [memThr]
+    )
 
-
+succH :: Maybe Height -> Height
+succH = maybe (Height 0) succ
 
 -- | Run generator for transactions
 dbTransactionGenerator
   :: (MonadReadDB m, MonadCached BData m, MonadIO m)
   => CoinStatements
   -> TxGenerator
-  -> Mempool m (Hashed (Alg BData) Tx) Tx
+  -> Mempool (Hashed (Alg BData) Tx) Tx
   -> (Tx -> m ())
   -> m a
 dbTransactionGenerator dict gen mempool push = forever $ do
@@ -602,35 +699,15 @@ dbGenerateTransaction CoinStatements{..} TxGenerator{..} = do
 -- Interpretation of coin
 ----------------------------------------------------------------
 
--- | Specifications for mock coin status. It specify both genesis
---   block and optionally transaction generator.
-data CoinSpecification = CoinSpecification
- { coinAirdrop        :: !Integer
-   -- ^ Amount of coins allocated to each wallet
- , coinWallets        :: !Int
-   -- ^ Number of wallets in use
- , coinWalletsSeed    :: !Int
-   -- ^ Seed used to generate private keys for wallets
- , coinGeneratorDelay :: !(Maybe Int)
-   -- ^ Delay between TX generation. Nothing means don't generate
- , coinMaxMempoolSize :: !Int
-   -- ^ If mempool exceeds size new txs won't be generated
- , coinMaxBlockSize   :: !Int
-   -- ^ Maximum number of transactions in block. Normally such things
-   --   are hardcoded but we pass it as parameter for the sake of
-   --   configurability.
- }
- deriving (Generic,Show)
- deriving JSON.FromJSON via HSChainCfg CoinSpecification
-
 
 -- | Parameters for 'CoinT' monad transformer
 data CoinDictM g = CoinDictM
   { dictGauges    :: !g
-  , dictNamespace :: !Namespace
-  , dictLogEnv    :: !LogEnv
+  , dictNamespace :: Namespace
+  , dictLogEnv    :: LogEnv
   , dictConn      :: !(Connection 'RW)
   , dictCached    :: !(Cached BData)
+  , dictStmt      :: !CoinStatements
   }
   deriving stock (Generic)
 
@@ -651,6 +728,9 @@ deriving via NoMonitoring (CoinT () m)
     instance Monad m => MonadTMMonitoring (CoinT () m)
 deriving via MonitoringByField "dictGauges" (ReaderT (CoinDictM PrometheusGauges) m)
     instance MonadIO m => MonadTMMonitoring (CoinT PrometheusGauges m)
+
+instance (MonadIO m, MonadTMMonitoring (CoinT g m)) => MonadCoinDB (CoinT g m) where
+  coinStatements    = CoinT $ asks dictStmt
 
 instance MonadTrans (CoinT g) where
   lift = CoinT . lift
@@ -677,22 +757,18 @@ coinGenesis nodes CoinSpecification{..} = Genesis
 
 -- | Interpret coin
 interpretSpec
-  :: (MonadDB m, MonadCached BData m, MonadFork m, MonadMask m, MonadLogger m, MonadTMMonitoring m)
+  :: (MonadCoinDB m, MonadFork m, MonadMask m)
   => Configuration Example      -- ^ Delays configuration
   -> BlockchainNet              -- ^ Network API
   -> NodeSpec BData             -- ^ Node specification
   -> [Validator (Alg BData)]    -- ^ List of validators
   -> CoinSpecification          -- ^ Specification
   -> AppCallbacks m BData       -- ^ Commit callbacks
-  -> m (StateView m BData, [m ()])
+  -> m (CoinDB, [m ()])
 interpretSpec cfg net NodeSpec{..} valSet coin cb = do
   -- Start node
   -- (state,memThr,readST) <- inMemoryStateView $ genesisValSet genesis
-  --
-  -- We must ensure that database is initialized
-  initDatabase
-  mustQueryRW initCoinDB
-  (state,memThr,stmt) <- databaseStateView coin $ genesisValSet genesis
+  (state,memThr) <- databaseStateView coin $ genesisValSet genesis
   actions               <- runNode cfg NodeDescription
     { nodeValidationKey = nspecPrivKey
     , nodeGenesis       = genesis
@@ -700,13 +776,15 @@ interpretSpec cfg net NodeSpec{..} valSet coin cb = do
     , nodeNetwork       = net
     , nodeStateView     = state
     }
+    (state^.dbMempool)
   -- Allocate transactions generators
+  stmt        <- coinStatements
   txGenerator <- makeCoinGenerator coin >>= \case
     Nothing  -> return []
     Just txG -> do
-      cursor <- getMempoolCursor $ mempoolHandle $ stateMempool state
+      cursor <- getMempoolCursor $ mempoolHandle $ state^.dbMempool
       return [ dbTransactionGenerator stmt txG
-                 (stateMempool state)
+                 (state^.dbMempool)
                  (pushTxAsync cursor)
              ]
   -- Done
@@ -723,7 +801,7 @@ executeNodeSpec
   :: ()
   => MockClusterConfig BData CoinSpecification
   -> AppCallbacks (CoinT () IO) BData
-  -> ContT r IO [(StateView (CoinT () IO) BData, CoinDictM ())]
+  -> ContT r IO [(CoinDB, CoinDictM ())]
 executeNodeSpec MockClusterConfig{..} callbacks = do
   -- Create mock network and allocate DB handles for nodes
   net       <- liftIO P2P.newMockNet
@@ -731,6 +809,10 @@ executeNodeSpec MockClusterConfig{..} callbacks = do
   -- Start nodes
   rnodes    <- lift $ forM resources $ \(spec, bnet, dictConn, dictLogEnv) -> do
     dictCached <- newCached
+    Just () <- runQueryRW dictConn $ do
+      initializeBlockhainTables
+      initCoinDB
+    dictStmt   <- runDBT dictConn newCoinStatements
     let dict = CoinDictM { dictGauges    = ()
                          , dictNamespace = mempty
                          , ..

@@ -17,6 +17,7 @@ import Control.Monad.IO.Class
 
 import HSChain.Control.Util (atomicallyIO)
 import HSChain.Blockchain.Internal.Types
+import HSChain.Internal.Types.Consensus
 import HSChain.Internal.Types.Messages
 import HSChain.Types.Blockchain
 import HSChain.P2P.Internal.Types
@@ -37,8 +38,8 @@ import qualified HSChain.P2P.PeerState.Handle.Unknown as Unknown
 -- | Handler for timeout messages which means we need to generate new
 --   gossip messages to send to peers.
 handlerTimeout
-  :: (BlockData a, HandlerCtx a m)
-  => Config n a
+  :: (BlockData a, HandlerCtx a m, a ~ BlockType view)
+  => Config view
   -> State a
   -> GossipTimeout
   -> m (State a, [Command a])
@@ -52,9 +53,9 @@ handlerTimeout cfg st msg = do
   return (st', Push2Gossip <$> gossip)
 
 -- Generate gossip messages to be sent to peer.
-generateGossip :: (HandlerCtx a m)
-               => Config n a
-               -> HandlerDict s a m
+generateGossip :: (HandlerCtx a m, a ~ BlockType view)
+               => Config view
+               -> HandlerDict s view m
                -> s a
                -> GossipTimeout
                -> m [GossipMsg a]
@@ -70,7 +71,7 @@ generateGossip cfg dict st = \case
 -- In order to avoid deadlocks we periodically send current state to
 -- our peers. We also send out that we have proposal whenever we have
 -- commit already and waiting for block.
-handlerAnnounceTimeout :: (MonadIO m) => Config n a -> m [GossipMsg a]
+handlerAnnounceTimeout :: (MonadIO m) => Config view -> m [GossipMsg a]
 handlerAnnounceTimeout cfg = do
   st <- atomicallyIO $ view consensusSt cfg
   return $ case st of
@@ -88,8 +89,8 @@ handlerAnnounceTimeout cfg = do
 
 -- | Handler for messages coming from consensus engine
 handlerTx
-  :: (BlockData a, HandlerCtx a m)
-  => Config n a
+  :: (BlockData a, HandlerCtx a m, a ~ BlockType view)
+  => Config view
   -> State a
   -> MessageTx a
   -> m (State a, [Command a])
@@ -107,8 +108,8 @@ handlerTx cfg st msgTx = do
 -- gossip except for AnnStep since we need to change /our/ state
 -- instead of peer's state
 handleIssuedGossip
-  :: (BlockData a, HandlerCtx a m)
-  => Config n a
+  :: (BlockData a, HandlerCtx a m, a ~ BlockType view)
+  => Config view
   -> State a
   -> GossipMsg a
   -> m (State a)
@@ -131,8 +132,8 @@ handleIssuedGossip cfg st msg
 
 -- | Handler for gossip coming from peer.
 handlerGossip
-  :: (BlockData a, HandlerCtx a m)
-  => Config n a
+  :: (BlockData a, HandlerCtx a m, a ~ BlockType view)
+  => Config view
   -> State a
   -> GossipMsg a
   -> m (State a, [Command a])
@@ -151,9 +152,9 @@ handlerGossip cfg st m = do
 
 
 dispatch
-  :: (BlockData a, HandlerCtx a m)
+  :: (BlockData a, HandlerCtx a m, a ~ BlockType view)
   => State a
-  -> (forall s. HandlerDict s a m -> TransitionT s a m ())
+  -> (forall s. HandlerDict s view m -> TransitionT s a m ())
   -> m (State a)
 dispatch st fun =
   case st of

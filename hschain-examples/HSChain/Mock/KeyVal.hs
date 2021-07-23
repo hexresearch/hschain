@@ -8,6 +8,7 @@
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TupleSections              #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
@@ -17,8 +18,10 @@ module HSChain.Mock.KeyVal (
   , BData(..)
   , Tx
   , BState
-  , inMemoryStateView
     -- * Running KeyVal
+  , KeyValState(..)
+  , kvHeight, kvValSet, kvState
+  , inMemoryStateView
   , KeyValDictM(..)
   , KeyValT(..)
   , runKeyValT
@@ -27,6 +30,7 @@ module HSChain.Mock.KeyVal (
   ) where
 
 import Codec.Serialise (Serialise)
+import Control.Lens
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Reader
@@ -98,31 +102,43 @@ mkGenesisBlock valSet = Genesis
 --
 -------------------------------------------------------------------------------
 
--- | Create view on blockchain state which is kept completely in
---   memory
-inMemoryStateView :: MonadIO m => ValidatorSet (Alg BData) -> StateView m BData
-inMemoryStateView = make Nothing mempty
-  where
-    make mh st vals = r where
-      r = StateView
-        { stateHeight   = mh
-        , newValidators = vals
-        , commitState   = return r
-        , validatePropBlock = \b valSet -> return $ do
-            st' <- foldM (flip process) st
-                 $ unBData $ merkleValue $ blockData b
-            return $ make (Just $ blockHeight b) st' valSet
-        , generateCandidate = \NewBlock{..} -> do
-            i <- liftIO $ randomRIO (1,100)
-            let Just k = find (`Map.notMember` st)
-                         ["K_" ++ show (n :: Int) | n <- [1 ..]]
-            let tx        = (k,i)
-                Right st' = process tx st
-            return ( BData [tx]
-                   , make (Just newBlockHeight) st' newBlockValSet 
-                   )
-        , stateMempool = nullMempool hashed
-        }
+data KeyValState = KeyValState
+  { _kvHeight :: Maybe Height
+  , _kvValSet :: ValidatorSet (Alg BData)
+  , _kvState  :: Map.Map String Int
+  }
+$(makeLenses ''KeyValState)
+
+
+instance StateView KeyValState where
+  type BlockType       KeyValState = BData
+  type ViewConstraints KeyValState = MonadIO
+  type MinMonad        KeyValState = IO
+  stateHeight       = _kvHeight
+  newValidators     = _kvValSet
+  commitState       = pure
+  validatePropBlock st b valSet = pure $ do
+    st' <- foldM (flip process) (st^.kvState)
+         $ unBData $ merkleValue $ blockData b
+    return $ KeyValState
+      { _kvHeight = Just $ blockHeight b
+      , _kvValSet = valSet
+      , _kvState  = st'
+      }
+  generateCandidate st NewBlock{..} = do
+    i <- liftIO $ randomRIO (1,100)
+    let Just k = find (`Map.notMember` (st^.kvState))
+                 ["K_" ++ show (n :: Int) | n <- [1 ..]]
+    let tx        = (k,i)
+        Right st' = process tx $ st ^. kvState
+    return ( BData [tx]
+           , KeyValState
+               { _kvHeight = Just newBlockHeight
+               , _kvValSet = newBlockValSet
+               , _kvState  = st'
+               }
+           )
+  makeRunIO = pure $ RunIO id
 
 process :: Tx -> BState -> Either KeyValError BState
 process (k,v) m
@@ -130,6 +146,12 @@ process (k,v) m
   | otherwise        = Right $! Map.insert k v m
 
 
+inMemoryStateView :: ValidatorSet (Alg BData) -> KeyValState
+inMemoryStateView valSet = KeyValState
+  { _kvHeight = Nothing
+  , _kvValSet = valSet
+  , _kvState  = mempty
+  }
 
 interpretSpec
   :: ( MonadDB m, MonadCached BData m, MonadFork m, MonadMask m, MonadLogger m
@@ -139,7 +161,7 @@ interpretSpec
   -> BlockchainNet
   -> Configuration Example
   -> AppCallbacks m BData
-  -> m (StateView m BData, [m ()])
+  -> m (KeyValState, [m ()])
 interpretSpec genesis nspec bnet cfg cb = do
   let state = inMemoryStateView $ genesisValSet genesis
   acts  <- runNode cfg NodeDescription
@@ -149,6 +171,7 @@ interpretSpec genesis nspec bnet cfg cb = do
     , nodeNetwork       = bnet
     , nodeStateView     = state
     }
+    (nullMempool hashed)
   return
     ( state
     , acts
@@ -186,7 +209,7 @@ executeSpec
   :: ()
   => MockClusterConfig BData ()
   -> AppCallbacks (KeyValT IO) BData
-  -> ContT r IO [(StateView (KeyValT IO) BData, KeyValDictM)]
+  -> ContT r IO [(KeyValState, KeyValDictM)]
 executeSpec MockClusterConfig{..} callbacks = do
   -- Create mock network and allocate DB handles for nodes
   net       <- liftIO P2P.newMockNet

@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE TypeFamilies               #-}
 -- |
 module TM.Coin (tests) where
 
@@ -13,8 +14,6 @@ import Test.Tasty.HUnit
 import HSChain.Internal.Types.Consensus
 import HSChain.Crypto
 import HSChain.Types
-import HSChain.Store
-import HSChain.Store.Internal.BlockDB
 import HSChain.Mock.Coin
 import HSChain.Mock.KeyList
 import HSChain.Mock.Types   (makeGenesis)
@@ -30,7 +29,9 @@ tests = testGroup "Coin"
   , runTestSet "Dabase"    (runDatabase False)
   ]
 
-runTestSet :: Monad m => String -> (TestT m () -> IO ()) -> TestTree
+runTestSet
+  :: (StateView view, ViewConstraints view m, BlockType view ~ BData, Monad m)
+  => String -> (TestT view m () -> IO ()) -> TestTree
 runTestSet name run = testGroup name
   [ testCase "Single TX"     $ run singleSpend
   , testCase "Bad balance"   $ run badSpend
@@ -41,7 +42,9 @@ runTestSet name run = testGroup name
   , testCase "Sparce double spend" $ run $ doubleSpend False
   ]
 
-singleSpend,badSpend,badSignature :: Monad m => TestT m ()
+singleSpend,badSpend,badSignature
+  :: (StateView view, ViewConstraints view m, BlockType view ~ BData, Monad m)
+  => TestT view m ()
 -- Simple spending
 singleSpend = do
   advance [ signTx sk1 TxSend { txInputs  = [ UTXO 0 (hashed dep1) ]
@@ -63,7 +66,9 @@ badSignature = do
                           } ]
 
 -- Transfer coins between accounts. We optionally insert empty block between 
-spendChain :: Monad m => Bool -> TestT m ()
+spendChain
+  :: (StateView view, ViewConstraints view m, BlockType view ~ BData, Monad m)
+  => Bool -> TestT view m ()
 spendChain dense = do
   let txA = signTx sk1 TxSend { txInputs  = [ UTXO 0 (hashed dep1) ]
                               , txOutputs = [ Unspent pk2 100 ]
@@ -81,7 +86,9 @@ spendChain dense = do
   advance [ txC ]
 
 -- Attempt to double spend coins
-doubleSpend :: Monad m => Bool -> TestT m ()
+doubleSpend
+  :: (StateView view, ViewConstraints view m, BlockType view ~ BData, Monad m)
+  => Bool -> TestT view m ()
 doubleSpend dense = do
   let txA = signTx sk1 TxSend { txInputs  = [ UTXO 0 (hashed dep1) ]
                               , txOutputs = [ Unspent pk2 100 ]
@@ -103,37 +110,40 @@ signTx k tx = Send (publicKey k) (signHashed k tx) tx
 -- Monad for state tests
 ----------------------------------------------------------------
 
-newtype TestT m a = TestT (ReaderT Bool (StateT (StateView m BData) m) a)
+newtype TestT view m a = TestT (ReaderT Bool (StateT view m) a)
   deriving newtype (Functor, Applicative, Monad)
 
-runInMemoty :: TestT IO a -> IO a
+runInMemoty :: TestT CoinInMemory IO a -> IO a
 runInMemoty (TestT test) = do
   (sv0,_,_) <- inMemoryStateView coinSpec valSet
   Right sv1 <- validatePropBlock sv0 genesis valSet
   evalStateT (runReaderT test False) sv1
 
-runDatabase :: Bool -> TestT (HSChainT BData IO) a -> IO a
+runDatabase :: Bool -> TestT CoinDB (HSChainT BData IO) a -> IO a
 runDatabase doCommit (TestT test) = withHSChainT $ do
-  initDatabase
-  mustQueryRW $ do initCoinDB
-                   storeGenesis $ Genesis genesis valSet
-  (sv0, _, _)  <- databaseStateView coinSpec valSet
+  (sv0, _)  <- databaseStateView coinSpec valSet
   Right sv1 <- validatePropBlock sv0 genesis valSet
   evalStateT (runReaderT test doCommit) sv1
 
 -- Create new block and advance state by one step
-advance :: Monad m => [Tx] -> TestT m ()
+advance
+  :: (StateView view, ViewConstraints view m, BlockType view ~ BData, Monad m)
+  => Monad m => [Tx] -> TestT view m ()
 advance txs = mintBlock txs >>= \case
   Left  e  -> error $ show e
   Right () -> return ()
 
 -- Create new block which should not pass validation
-bad :: Monad m => [Tx] -> TestT m ()
+bad
+  :: (StateView view, ViewConstraints view m, BlockType view ~ BData, Monad m)
+  => [Tx] -> TestT view m ()
 bad txs = mintBlock txs >>= \case
   Left  _  -> return ()
   Right () -> error "Unexpected success"
 
-mintBlock :: Monad m => [Tx] -> TestT m (Either (BChError BData) ())
+mintBlock
+  :: (StateView view, ViewConstraints view m, BlockType view ~ BData, Monad m)
+  => [Tx] -> TestT view m (Either (BChError BData) ())
 mintBlock txs = TestT $ do
   sv <- get
   lift (lift (validatePropBlock sv (newBlock sv) valSet)) >>= \case

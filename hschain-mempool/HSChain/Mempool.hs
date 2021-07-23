@@ -69,13 +69,13 @@ import HSChain.Control.Channels
 
 -- | Dictionary of functions for working with mempool object. All
 --   operations are performed asynchronously
-data Mempool m tid tx = Mempool
+data Mempool tid tx = Mempool
   { getMempoolState       :: forall f. MonadIO f => f (MempoolState tid tx)
     -- ^ Get current state of mempool. It's updated after every
     --   command to mempool is processed.
-  , removeTxByHashes      :: [tid] -> m ()
+  , removeTxByHashes      :: forall f. MonadIO f => [tid] -> f ()
     -- ^ Remove transactions from mempool with given hashes.
-  , startMempoolFiltering :: (tx -> m Bool) -> m ()
+  , startMempoolFiltering :: forall f. MonadIO f => (tx -> IO Bool) -> f ()
     -- ^ Command mempool to start filtering transactions asynchronously
   , mempoolHandle         :: MempoolHandle tid tx
     -- ^ Mempool handle for use in gossip. It's will to be removed
@@ -85,7 +85,7 @@ data Mempool m tid tx = Mempool
   , mempoolInfo           :: forall f. MonadIO f => f MempoolInfo
   }
 
-nullMempool :: Monad m => (tx -> tid) -> Mempool m tid tx
+nullMempool :: (tx -> tid) -> Mempool tid tx
 nullMempool toTID = Mempool
   { getMempoolState       = return $ emptyMempoolState toTID
   , removeTxByHashes      = \_ -> return ()
@@ -100,7 +100,7 @@ nullMempool toTID = Mempool
   }
 
 -- | Compute current size of a mempool
-mempoolSize :: MonadIO f => Mempool m tid tx -> f Int
+mempoolSize :: MonadIO f => Mempool tid tx -> f Int
 mempoolSize m = IMap.size . mempFIFO <$> getMempoolState m
 
 -- | Handle for working with mempool
@@ -128,7 +128,7 @@ newMempool
   :: (CryptoHashable tx, Ord tid, MonadIO m)
   => (tx -> tid)
   -> (tx -> Bool)
-  -> m (Mempool m tid tx, m ())
+  -> m (Mempool tid tx, m ())
 newMempool toTID basicValidation = do
   (sinkTx, mkTx) <- broadcastPair
   dict <- newMempoolDict toTID basicValidation sinkTx
@@ -153,13 +153,13 @@ newMempool toTID basicValidation = do
 ----------------------------------------------------------------
 
 
-data MempoolDict m tid tx = MempoolDict
+data MempoolDict tid tx = MempoolDict
   { basicValidation  :: tx -> Bool
   , dictToTID        :: tx -> tid
   , varMempool       :: TVar (MempoolState tid tx)
-  , varValidate      :: TVar (tx -> m Bool)
+  , varValidate      :: TVar (tx -> IO Bool)
   , varPending       :: TVar [tid]
-  , chPushTx         :: TChan (MempoolCmd m tid tx)
+  , chPushTx         :: TChan (MempoolCmd tid tx)
   , broadcastTx      :: Sink tx
   , counterAdded     :: IORef Int
   , counterSize      :: IORef Int
@@ -168,13 +168,13 @@ data MempoolDict m tid tx = MempoolDict
   }
 
 -- | Command to push new TX to mempool
-data MempoolCmd m tid tx
+data MempoolCmd tid tx
   = CmdAddTx !(Maybe (MVar (Maybe tid)))
              !tx
     -- ^ Add transaction to mempool.
   | CmdRemoveTx [tid]
     -- ^ Remove given transactions from mempool.
-  | CmdStartFiltering (tx -> m Bool)
+  | CmdStartFiltering (tx -> IO Bool)
     -- ^ Start Remove now invalid TXs from mempool using given
     --   predicate.
   | CmdAskForState !(MVar (MempoolState tid tx))
@@ -182,7 +182,7 @@ data MempoolCmd m tid tx
     --   'varMempool' variable using this method ensures that previous
     --   command completed.
 
-newMempoolDict :: MonadIO m => (tx -> tid) -> (tx -> Bool) -> Sink tx -> m (MempoolDict m tid tx)
+newMempoolDict :: MonadIO m => (tx -> tid) -> (tx -> Bool) -> Sink tx -> m (MempoolDict tid tx)
 newMempoolDict dictToTID basicValidation broadcastTx = liftIO $ do
   varMempool   <- newTVarIO $ emptyMempoolState dictToTID
   varValidate  <- newTVarIO $ const $ return False
@@ -194,7 +194,7 @@ newMempoolDict dictToTID basicValidation broadcastTx = liftIO $ do
   counterFiltered  <- newIORef 0
   return MempoolDict{..}
 
-makeMempoolHandle :: MempoolDict m tid tx -> MempoolHandle tid tx
+makeMempoolHandle :: MempoolDict tid tx -> MempoolHandle tid tx
 makeMempoolHandle MempoolDict{..} = MempoolHandle
   { getMempoolCursor = do
       varN <- liftIO $ newTVarIO 0
@@ -219,7 +219,7 @@ makeMempoolHandle MempoolDict{..} = MempoolHandle
 
 runMempool
   :: (CryptoHashable tx, Ord tid, MonadIO m)
-  => MempoolDict m tid tx
+  => MempoolDict tid tx
   -> m ()
 runMempool dict@MempoolDict{..} = do
   let awaitPending = do
@@ -235,13 +235,14 @@ runMempool dict@MempoolDict{..} = do
 
 handleCommand
   :: (CryptoHashable tx, MonadIO m, Ord tid)
-  => MempoolDict m tid tx -> MempoolCmd m tid tx -> m ()
+  => MempoolDict tid tx -> MempoolCmd tid tx -> m ()
 handleCommand MempoolDict{..} = \case
   CmdAddTx retVar tx -> do
     let tid = dictToTID tx
     validation <- liftIO $ readTVarIO varValidate
-    mmem <- mempoolAddTX basicValidation validation tx
-        =<< liftIO (readTVarIO varMempool)
+    mmem <- liftIO
+          $ mempoolAddTX basicValidation validation tx
+        =<< readTVarIO varMempool
     case mmem of
       Nothing   -> inc counterDiscarded
       Just mem' -> do atomicallyIO $ writeTVar varMempool mem'
@@ -271,11 +272,12 @@ handleCommand MempoolDict{..} = \case
 
 handlePendingCheck
   :: (MonadIO m, Ord tid)
-  => MempoolDict m tid tx -> [tid] -> m ()
+  => MempoolDict tid tx -> [tid] -> m ()
 handlePendingCheck MempoolDict{..} tidList = do
   m   <- liftIO $ readTVarIO varMempool
   val <- liftIO $ readTVarIO varValidate
-  badTxs <- filterM (fmap not . val . snd)
+  badTxs <- liftIO
+          $ filterM (fmap not . val . snd)
           $ mapMaybe (\tid -> do (_,tx) <- Map.lookup tid (mempRevMap m)
                                  pure (tid,tx)
                      ) tidList

@@ -73,19 +73,22 @@ block1 = Block
     dat     = dioGenerate newBlock
     valHash = hashed $ genesisValSet genesis
 
-viewH0 :: StateView Identity (BData Tag)
+viewH0 :: DioState Tag
 viewH0 = st1
   where
     Right st1 = runIdentity
               $ validatePropBlock st0 (genesisBlock genesis) (genesisValSet genesis)
-    st0 = inMemoryStateView $ genesisValSet genesis
+    st0 = DioState { _dioHeight = Nothing
+                   , _dioValSet = genesisValSet genesis
+                   , _userMap   = mempty
+                   }
 
 dioGenerate :: NewBlock (BData Tag) -> BData Tag
 dioGenerate nb
   = fst $ runIdentity
   $ generateCandidate viewH0 nb
 
-dioProcess :: Block (BData Tag) -> Either (BChError (BData Tag)) (StateView Identity (BData Tag))
+dioProcess :: Block (BData Tag) -> Either (BChError (BData Tag)) (DioState Tag)
 dioProcess b
   = runIdentity
   $ validatePropBlock viewH0 b (genesisValSet genesis)

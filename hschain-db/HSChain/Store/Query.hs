@@ -33,6 +33,8 @@ module HSChain.Store.Query (
     -- ** Monad with access to connection
   , MonadReadDB(..)
   , MonadDB(..)
+  , DBT(..)
+  , runDBT
     -- * MonadQuery
   , MonadQueryRO(..)
   , MonadQueryRW(..)
@@ -229,6 +231,19 @@ class (MonadQueryRO m) => MonadQueryRW m where
   default liftQueryRW :: (m ~ t f, MonadQueryRW f, MonadTrans t)
                       => Query rw x -> m x
   liftQueryRW = lift . liftQueryRW
+
+-- | Transformer that provides 'MonadReadDB' and 'MonadDB' instances
+newtype DBT rw m a = DBT (ReaderT (Connection rw) m a)
+  deriving newtype ( Functor, Applicative, Monad, Fail.MonadFail, MonadIO
+                   , MonadThrow, MonadCatch, MonadMask)
+
+runDBT :: Connection rw -> DBT rw m a -> m a
+runDBT c (DBT m) = runReaderT m c
+
+instance MonadIO m => MonadReadDB (DBT rw m) where
+  askConnectionRO = DBT $ asks connectionRO
+instance (rw ~ 'RW, MonadIO m) => MonadDB (DBT rw m) where
+  askConnectionRW = DBT ask
 
 
 instance MonadReadDB  m => MonadReadDB  (IdentityT m)

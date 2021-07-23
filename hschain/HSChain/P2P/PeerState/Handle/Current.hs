@@ -20,6 +20,7 @@ import System.Random            (randomRIO)
 import HSChain.Blockchain.Internal.Types
 import HSChain.Control.Util              (atomicallyIO)
 import HSChain.Crypto.Containers         (toPlainMap)
+import HSChain.Internal.Types.Consensus
 import HSChain.Internal.Types.Messages
 import HSChain.Store
 import HSChain.Store.Internal.Proposals
@@ -38,7 +39,8 @@ import qualified Data.Map.Strict    as Map
 import qualified Data.Set           as Set
 
 
-handler :: (BlockData a, HandlerCtx a m) => HandlerDict CurrentState a m
+handler :: (BlockData a, HandlerCtx a m, a ~ BlockType view)
+        => HandlerDict CurrentState view m
 handler = HandlerDict
   { handlerGossipMsg        = handlerGossip
   , advanceOurHeight        = advanceOurHeightWrk
@@ -50,8 +52,8 @@ handler = HandlerDict
 
 
 handlerGossip
-  :: (MonadIO m, MonadReadDB m, MonadCached a m, BlockData a)
-  => Config n a -> GossipMsg a -> TransitionT CurrentState a m ()
+  :: (MonadIO m, MonadReadDB m, MonadCached a m, BlockData a, a ~ BlockType view)
+  => Config view -> GossipMsg a -> TransitionT CurrentState a m ()
 handlerGossip cfg = \case
   GossipPreVote v@(signedValue -> Vote{..}) -> do
     addPrevote voteHeight voteRound $ signedKeyInfo v
@@ -146,8 +148,8 @@ advanceOurHeightWrk (FullStep ourH _ _) = setFinalState advance
 ----------------------------------------------------------------
 
 handlerProposalTimeoutMsg
-  :: (MonadIO m, MonadReadDB m, MonadCached a m)
-  => Config n a -> CurrentState a -> m [GossipMsg a]
+  :: (MonadIO m, MonadReadDB m, MonadCached a m, a ~ BlockType view)
+  => Config view -> CurrentState a -> m [GossipMsg a]
 handlerProposalTimeoutMsg cfg st = do
   bchH <- queryRO blockchainHeight
   atomicallyIO (view consensusSt cfg) >>= \case
@@ -164,8 +166,8 @@ handlerProposalTimeoutMsg cfg st = do
     noRoundInProposals = Set.notMember r $ st ^. peerProposals
 
 handlerPrevoteTimeoutMsg
-  :: (MonadIO m, MonadReadDB m, MonadCached a m)
-  => Config n a -> CurrentState a -> m [GossipMsg a]
+  :: (MonadIO m, MonadReadDB m, MonadCached a m, a ~ BlockType view)
+  => Config view -> CurrentState a -> m [GossipMsg a]
 handlerPrevoteTimeoutMsg cfg st
   | Just polR <- st^.peerLock = gossipPrevotes cfg st polR
   | otherwise                 = gossipPrevotes cfg st r
@@ -173,8 +175,8 @@ handlerPrevoteTimeoutMsg cfg st
     FullStep _ r _ = st ^. peerStep
 
 gossipPrevotes
-  :: (MonadIO m, MonadReadDB m, MonadCached a m)
-  => Config n a -> CurrentState a -> Round -> m [GossipMsg a]
+  :: (MonadIO m, MonadReadDB m, MonadCached a m, a ~ BlockType view)
+  => Config view -> CurrentState a -> Round -> m [GossipMsg a]
 gossipPrevotes cfg st r = do
   bchH <- queryRO blockchainHeight
   atomicallyIO (view consensusSt cfg) >>= \case
@@ -198,8 +200,8 @@ gossipPrevotes cfg st r = do
   
 
 handlerPrecommitsTimeoutMsg
-  :: (MonadIO m, MonadReadDB m, MonadCached a m)
-  => Config n a -> CurrentState a -> m [GossipMsg a]
+  :: (MonadIO m, MonadReadDB m, MonadCached a m, a ~ BlockType view)
+  => Config view -> CurrentState a -> m [GossipMsg a]
 handlerPrecommitsTimeoutMsg cfg st = do
   bchH <- queryRO blockchainHeight
   atomicallyIO (view consensusSt cfg) >>= \case
@@ -223,8 +225,8 @@ handlerPrecommitsTimeoutMsg cfg st = do
 
 
 handlerBlocksTimeoutMsg
-  :: (MonadIO m, MonadReadDB m, MonadCached a m)
-  => Config n a -> CurrentState a -> m [GossipMsg a]
+  :: (MonadIO m, MonadReadDB m, MonadCached a m, a ~ BlockType view)
+  => Config view -> CurrentState a -> m [GossipMsg a]
 handlerBlocksTimeoutMsg cfg st = do
   bchH <- queryRO blockchainHeight
   atomicallyIO (view consensusSt cfg) >>= \case

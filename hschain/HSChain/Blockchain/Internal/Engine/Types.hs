@@ -39,6 +39,7 @@ import HSChain.Crypto
 import HSChain.Crypto.SHA (SHA512)
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
+import HSChain.Internal.Types.Consensus
 import HSChain.Internal.Types.Messages
 
 
@@ -71,13 +72,13 @@ instance HoistDict AppCallbacks where
     }
 
 -- | Application connection to outer world
-data AppChans m a = AppChans
-  { appChanRx  :: TBQueue (MessageRx 'Unverified a)
+data AppChans view = AppChans
+  { appChanRx  :: TBQueue (MessageRx 'Unverified (BlockType view))
     -- ^ Queue for receiving messages related to consensus protocol
     --   from peers.
-  , appChanTx  :: TChan (MessageTx a)
+  , appChanTx  :: TChan (MessageTx (BlockType view))
     -- ^ TChan for broadcasting messages to the peers
-  , appTMState :: TVar  (Maybe (Height, TMState m a))
+  , appTMState :: TVar  (Maybe (Height, TMState view))
     -- ^ Current state of consensus. It includes current height, state
     --   machine status and known blocks which should be exposed in
     --   read-only manner for gossip with peers.

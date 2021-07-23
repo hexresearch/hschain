@@ -16,6 +16,7 @@
 {-# LANGUAGE TypeOperators              #-}
 import Control.Concurrent
 import Control.Monad
+import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
 import Data.Yaml.Config       (loadYamlSettings, requireEnv)
@@ -32,6 +33,7 @@ import HSChain.Mock.Coin
 import HSChain.Mock.Types
 import HSChain.Run
 import HSChain.Store
+import HSChain.Store.Query (runDBT)
 import HSChain.Control.Class
 import HSChain.Monitoring
 import HSChain.Mock
@@ -75,6 +77,7 @@ main = do
                                  }
     -- Dictionatry with paremeters
     dictCached <- newCached
+    dictStmt   <- liftIO $ runDBT dictConn newCoinStatements
     let dict = CoinDictM { dictNamespace = mempty
                          , ..
                          }

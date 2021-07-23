@@ -1,9 +1,13 @@
 {-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE DerivingVia                #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeFamilies               #-}
 -- |
 -- Data for mock blockchain used in tests for consensus and gossip
 module TM.Util.MockChain where
@@ -16,6 +20,7 @@ import Control.Monad.Fail (MonadFail)
 import           Data.List (sortOn)
 import qualified Data.Map.Strict    as Map
 import qualified Data.List.NonEmpty as NE
+import GHC.Generics (Generic)
 
 import HSChain.Control.Class
 import HSChain.Crypto
@@ -25,32 +30,60 @@ import HSChain.Monitoring
 import HSChain.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Internal.Types.Consensus
+import qualified HSChain.Store.Query as DB
 import HSChain.Mock.KeyList
 import HSChain.Mock.KeyVal  (BData(..),mkGenesisBlock)
-import HSChain.Mock.Coin    (CoinSpecification(..))
-
+import HSChain.Mock.Coin    (CoinStatements, CoinSpecification(..),MonadCoinDB(..))
+import qualified HSChain.Mock.Coin as Coin
 
 ----------------------------------------------------------------
 -- Monad for running tests
 ----------------------------------------------------------------
 
-newtype HSChainT a m x = HSChainT (ReaderT (Connection 'RW, Cached a) m x)
+class InitExtra a where
+  data family Extra a 
+  initExtra :: (MonadIO m, MonadMask m, MonadDB m) => m (Extra a)
+instance InitExtra BData where
+  data instance Extra BData = ExtraKV
+  initExtra = pure ExtraKV
+instance InitExtra Coin.BData where
+  data instance Extra Coin.BData = ExtraCoin CoinStatements
+  initExtra = do
+    DB.mustQueryRW Coin.initCoinDB
+    ExtraCoin <$> Coin.newCoinStatements
+
+data HSDict a = HSDict
+  { dictConn  :: Connection 'RW
+  , dictCache :: Cached a
+  , dictExtra :: Extra  a
+  }
+  deriving Generic
+
+newtype HSChainT a m x = HSChainT (ReaderT (HSDict a) m x)
   deriving newtype (Functor,Applicative,Monad,MonadIO,MonadFail)
   deriving newtype (MonadThrow,MonadCatch,MonadMask,MonadFork)
-  deriving newtype (MonadReader (Connection 'RW, Cached a))
+  deriving newtype (MonadReader (HSDict a))
   -- HSChain instances
   deriving MonadTMMonitoring      via NoMonitoring   (HSChainT a m)
   deriving MonadLogger            via NoLogsT        (HSChainT a m)
   deriving (MonadReadDB, MonadDB) via DatabaseByType (HSChainT a m)
   deriving (MonadCached a)        via CachedByType a (HSChainT a m)
 
-runHSChainT :: forall a m x. MonadIO m => Connection 'RW -> HSChainT a m x -> m x
-runHSChainT c (HSChainT m) = do
-  cache <- newCached
-  runReaderT m (c,cache)
+runHSChainT :: (InitExtra a, MonadMask m, MonadIO m) => Connection 'RW -> HSChainT a m x -> m x
+runHSChainT dictConn (HSChainT m) = do
+  dictCache <- newCached
+  dictExtra <- DB.runDBT dictConn $ do
+    DB.mustQueryRW initializeBlockhainTables
+    initExtra
+  runReaderT m HSDict{..}
 
-withHSChainT :: (MonadIO m, MonadMask m) => HSChainT a m x -> m x
-withHSChainT m = withDatabase "" $ \c -> runHSChainT c m
+withHSChainT :: (MonadIO m, MonadMask m, InitExtra a) => HSChainT a m x -> m x
+withHSChainT m = withDatabase "" $ \c -> do
+  runHSChainT c m
+
+instance MonadIO m => MonadCoinDB (HSChainT Coin.BData m) where
+  coinStatements = do ExtraCoin stmt <- asks dictExtra
+                      pure stmt
 
 ----------------------------------------------------------------
 -- Validators for mockchain

@@ -20,11 +20,9 @@ import Data.Int
 import Data.Bits
 import Data.Maybe
 import qualified Data.Aeson          as JSON
-import qualified Data.Map.Strict     as Map
 import qualified Data.Vector         as V
 import qualified Data.HashMap.Strict as HM
 import qualified Data.ByteString     as BS
-import Control.Lens
 import GHC.Generics (Generic)
 
 import HSChain.Crypto
@@ -44,8 +42,6 @@ newtype BData tag = BData { unBData :: [Tx] }
   deriving stock    (Show,Eq,Generic)
   deriving newtype  (NFData,JSON.ToJSON,JSON.FromJSON)
   deriving anyclass (Serialise)
-instance CryptoHashable (BData tag) where
-  hashStep = genericHashStep "hschain-examples"
 
 data Tx = Tx
   { txSig  :: !(Signature DioAlg)
@@ -67,32 +63,6 @@ data DioError = DioError
   deriving stock    (Show,Generic)
   deriving anyclass (Exception,NFData,JSON.FromJSON,JSON.ToJSON)
 
-data DioState = DioState
-  { _userMap :: Map.Map (PublicKey DioAlg) UserState
-  }
-  deriving stock    (Show,   Generic)
-  deriving anyclass (NFData, Serialise)
-
-data UserState = UserState
-  { _userNonce   :: !Int64
-  , _userBalance :: !Int64
-  }
-  deriving stock    (Show,   Generic)
-  deriving anyclass (NFData, Serialise)
-
-instance CryptoHashable Tx where
-  hashStep = genericHashStep "hschain.dioxane"
-instance CryptoHashable TxBody where
-  hashStep = genericHashStep "hschain.dioxane"
-instance CryptoHashable DioState where
-  hashStep = genericHashStep "hschain.dioxane"
-instance CryptoHashable UserState where
-  hashStep = genericHashStep "hschain.dioxane"
-
-
-makeLenses ''UserState
-makeLenses ''DioState
-
 instance Dio tag => BlockData (BData tag) where
   type TX       (BData tag) = Tx
   type BChError (BData tag) = DioError
@@ -100,6 +70,12 @@ instance Dio tag => BlockData (BData tag) where
   proposerSelection         = ProposerSelection randomProposerSHA256
   logBlockData (BData txs)  = HM.singleton "Ntx" $ JSON.toJSON $ length txs
 
+instance CryptoHashable (BData tag) where
+  hashStep = genericHashStep "hschain-examples"
+instance CryptoHashable Tx where
+  hashStep = genericHashStep "hschain.dioxane"
+instance CryptoHashable TxBody where
+  hashStep = genericHashStep "hschain.dioxane"
 
 ----------------------------------------------------------------
 -- Logic
