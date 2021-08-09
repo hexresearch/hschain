@@ -127,7 +127,7 @@ runDatabase doCommit (TestT test) = withHSChainT $ do
 
 -- Create new block and advance state by one step
 advance
-  :: (StateView view, ViewConstraints view m, BlockType view ~ BData, Monad m)
+  :: (StateView view, ViewConstraints view m, BlockType view ~ BData)
   => Monad m => [Tx] -> TestT view m ()
 advance txs = mintBlock txs >>= \case
   Left  e  -> error $ show e

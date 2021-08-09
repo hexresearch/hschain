@@ -286,7 +286,7 @@ interpretSpec genesis nspec bnet cfg cb = do
   return (conn, acts)
 
 executeNodeSpec
-  :: (MonadIO m, MonadMask m, MonadFork m,  MonadTMMonitoring m)
+  :: (MonadIO m, MonadMask m, MonadFork m)
   => MockClusterConfig Tx ()
   -> [(NodeSpec Tx, BlockchainNet, Connection 'RW, LogEnv)]
   -> ContT r m [Connection 'RW]

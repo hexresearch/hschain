@@ -6,7 +6,6 @@ import Control.Monad.IO.Class
 import Servant.API
 import Servant.API.Generic
 import Servant.Server.Generic
-import Database.SQLite.Simple            ((:.)(..))
 
 import HSChain.Crypto
 import HSChain.Examples.Coin

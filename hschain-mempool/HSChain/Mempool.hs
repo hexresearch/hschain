@@ -234,7 +234,7 @@ runMempool dict@MempoolDict{..} = do
 
 
 handleCommand
-  :: (CryptoHashable tx, MonadIO m, Ord tid)
+  :: (MonadIO m, Ord tid)
   => MempoolDict tid tx -> MempoolCmd tid tx -> m ()
 handleCommand MempoolDict{..} = \case
   CmdAddTx retVar tx -> do

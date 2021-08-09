@@ -26,7 +26,6 @@ import Data.Generics.Product.Typed (typed)
 import qualified Data.Aeson                       as JSON
 import qualified Data.Map.Strict                  as Map
 import qualified Data.Vector                      as V
-import           Database.SQLite.Simple            ((:.)(..))
 import qualified Database.SQLite.Simple.ToField   as SQL
 import qualified Database.SQLite.Simple.FromField as SQL
 import qualified Database.SQLite.Simple.FromRow   as SQL
@@ -484,7 +483,7 @@ data CoinState (m :: * -> *) = CoinState
   , csBlockIdx :: BlockIndex Coin
   }
 
-instance (MonadDB m, MonadThrow m, MonadIO m) => StateView (CoinState m) where
+instance (MonadDB m, MonadIO m) => StateView (CoinState m) where
   type BlockType (CoinState m) = Coin
   type MonadOf   (CoinState m) = m
   stateBH = overlayTip . csOverlay
@@ -591,7 +590,7 @@ coinStateView genesis = do
   st   <- mustQueryRW $ initializeStateView genesis bIdx
   return (coinDB, bIdx, st)
 
-coinDB :: (MonadThrow m, MonadDB m, MonadIO m) => BlockDB m Coin
+coinDB :: (MonadDB m, MonadIO m) => BlockDB m Coin
 coinDB = BlockDB
   { storeHeader        = storeCoinHeader
   , storeBlock         = storeCoinBlock
@@ -625,7 +624,7 @@ initializeStateView genesis bIdx = do
 
 
 -- Initialize database for mock coin blockchain
-initCoinDB :: (MonadThrow m, MonadDB m, MonadIO m) => m ()
+initCoinDB :: (MonadDB m, MonadIO m) => m ()
 initCoinDB = mustQueryRW $ do
   -- Table for blocks. We store both block data is serialized form and
   -- separately UTXOs for working with blockchain state so data is
@@ -705,7 +704,7 @@ retrieveAllCoinHeaders = queryRO $ basicQueryWith_
   coinHeaderDecoder
   "SELECT height, time, prev, dataHash, target, nonce FROM coin_blocks ORDER BY height"
 
-storeCoinHeader :: (MonadThrow m, MonadIO m, MonadDB m) => Header Coin -> m ()
+storeCoinHeader :: (MonadIO m, MonadDB m) => Header Coin -> m ()
 storeCoinHeader b@Block{blockData=Coin{..}, ..} = mustQueryRW $ do
   basicExecute
     "INSERT OR IGNORE INTO coin_blocks VALUES (NULL, ?, ?, ?, ?, ?, NULL, ?, ?)"
@@ -718,7 +717,7 @@ storeCoinHeader b@Block{blockData=Coin{..}, ..} = mustQueryRW $ do
     , coinNonce
     )
 
-storeCoinBlock :: (MonadThrow m, MonadIO m, MonadDB m) => Block Coin -> m ()
+storeCoinBlock :: (MonadIO m, MonadDB m) => Block Coin -> m ()
 storeCoinBlock b@Block{blockData=Coin{..}, ..} = mustQueryRW $ do
   exists <- basicQuery "SELECT blockData IS NULL FROM coin_blocks WHERE bid = ?" (Only (blockID b))
   case exists of

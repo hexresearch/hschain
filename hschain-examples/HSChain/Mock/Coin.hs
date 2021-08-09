@@ -79,7 +79,6 @@ import Data.Either
 import Data.IORef
 import Data.Maybe
 import Data.Map             (Map,(!))
-import Database.SQLite.Simple             ((:.)(..))
 import qualified Database.SQLite.Simple.ToField   as SQL
 import qualified Database.SQLite.Simple.FromRow   as SQL
 import qualified Database.SQLite.Simple.ToRow     as SQL
@@ -625,7 +624,7 @@ instance StateView CoinDB where
                                         }
 
 databaseStateView
-  :: (MonadIO m, MonadMask m, MonadDB m, MonadCached BData m)
+  :: (MonadIO m, MonadDB m, MonadCached BData m)
   => CoinSpecification
   -> ValidatorSet (Alg BData)
   -> m (CoinDB, [m ()])

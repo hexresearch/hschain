@@ -77,7 +77,7 @@ data BlockchainNet = BlockchainNet
 --   need to run something else along them.
 runNode
   :: ( MonadDB m, MonadCached a m, MonadMask m, MonadFork m, MonadLogger m, MonadTMMonitoring m
-     , BlockData a, Eq a, Show a, a ~ BlockType view, StateView view, ViewConstraints view m
+     , Eq a, Show a, a ~ BlockType view, StateView view, ViewConstraints view m
      )
   => Configuration app         -- ^ Timeouts for network and consensus
   -> NodeDescription m view    -- ^ Description of node.
