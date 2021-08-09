@@ -353,11 +353,11 @@ queryRW q = flip runQueryRW q =<< askConnectionRW
 --   'UnexpectedRollback' exception if query is rolled back was rolled
 --   back.
 mustQueryRW
-  :: (MonadDB m, MonadThrow m, MonadIO m)
+  :: (MonadDB m, MonadIO m)
   => Query 'RW a
   -> m a
 mustQueryRW q
-  = throwNothing UnexpectedRollback =<< flip runQueryRW q =<< askConnectionRW
+  = liftIO . throwNothing UnexpectedRollback =<< flip runQueryRW q =<< askConnectionRW
 
 -- | Execute SQL query and decode results using @FromRow@ mechanism
 basicQuery :: (SQL.ToRow p, SQL.FromRow q, MonadQueryRO m) => SQL.Query -> p -> m [q]
@@ -447,15 +447,15 @@ newtype QueryT (rw :: Access) m x = QueryT { unQueryT :: m x }
 instance MFunctor (QueryT rw) where
   hoist f (QueryT m) = QueryT (f m)
 
-instance MonadThrow m => Monad (QueryT rw m) where
+instance MonadIO m => Monad (QueryT rw m) where
   return         = QueryT . return
   QueryT m >>= f = QueryT $ unQueryT . f =<< m
 #if !MIN_VERSION_base(4,11,0)
-  fail _         = throwM Rollback
+  fail _         = liftIO $ throwM Rollback
 #endif
 
-instance MonadThrow m => Fail.MonadFail (QueryT rw m) where
-  fail _ = throwM Rollback
+instance MonadIO m => Fail.MonadFail (QueryT rw m) where
+  fail _ = liftIO $ throwM Rollback
 
 -- | Exception thrown in order to roll back transaction
 data Rollback = Rollback
@@ -475,13 +475,13 @@ data DatabaseIsClosed = DatabaseIsClosed
 instance MonadTrans (QueryT rw) where
   lift = QueryT
 
-instance (MonadIO m, MonadThrow m, MonadReadDB m) => MonadQueryRO (QueryT rw m) where
+instance (MonadIO m, MonadReadDB m) => MonadQueryRO (QueryT rw m) where
   liftQueryRO (Query action) = QueryT $ do
     -- NOTE: coercion is needed since we need to implement for both
     --       QueryT 'RO/'RW
     liftIO . runReaderT action . coerce =<< askConnectionRO
 
-instance (MonadIO m, MonadThrow m, MonadDB m) => MonadQueryRW (QueryT 'RW m) where
+instance (MonadIO m, MonadDB m) => MonadQueryRW (QueryT 'RW m) where
   liftQueryRW (Query action) = QueryT $ do
     -- NOTE: coercion is needed since we need to implement for both
     --       Query 'RO/'RW
@@ -552,7 +552,7 @@ prepareQuery sql = do
   PreparedQuery <$> basicPrepare c sql
 
 basicPrepare
-  :: (MonadMask m, MonadIO m)
+  :: (MonadIO m)
   => Connection rw -> SQL.Query -> m SQL.Statement
 basicPrepare Connection{..} sql = liftIO $ mask_ $ do
   stmt <- SQL.openStatement connConn sql
