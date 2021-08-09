@@ -97,6 +97,7 @@ module HSChain.Store.Query (
     -- * Reexports
   , SQL.Only(..)
   , SQL.NamedParam(..)
+  , (SQL.:.)(..)
   ) where
 
 import Codec.Serialise                (Serialise, deserialise, serialise)
