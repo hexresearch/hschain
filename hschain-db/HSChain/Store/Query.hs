@@ -50,6 +50,7 @@ module HSChain.Store.Query (
   , basicQuery
   , basicQuery1
   , basicQuery_
+  , basicQueryNamed
   , basicExecute
   , basicExecute_
     -- *** Queries with custom decoders
@@ -95,6 +96,7 @@ module HSChain.Store.Query (
   , DatabaseByReader(..)
     -- * Reexports
   , SQL.Only(..)
+  , SQL.NamedParam(..)
   ) where
 
 import Codec.Serialise                (Serialise, deserialise, serialise)
@@ -370,6 +372,11 @@ basicQuery_ :: (SQL.FromRow q, MonadQueryRO m) => SQL.Query -> m [q]
 basicQuery_ sql = liftQueryRO $ Query $ do
   conn <- asks connConn
   liftIO $ SQL.query_ conn sql
+
+basicQueryNamed :: (SQL.FromRow q, MonadQueryRO m) => SQL.Query -> [SQL.NamedParam] -> m [q]
+basicQueryNamed sql p = liftQueryRO $ Query $ do
+  conn <- asks connConn
+  liftIO $ SQL.queryNamed conn sql p
 
 -- | Execute SQL query that returns zero or one result
 basicQuery1 :: (SQL.ToRow row, SQL.FromRow a, MonadQueryRO m)
