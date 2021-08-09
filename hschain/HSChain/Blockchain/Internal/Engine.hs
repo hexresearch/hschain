@@ -66,7 +66,7 @@ newAppChans ConsensusCfg{incomingQueueSize = sz} = do
 
 rewindBlockchainState
   :: ( MonadDB m, MonadIO m, MonadThrow m, MonadCached a m
-     , Crypto (Alg a), BlockData a, a ~ BlockType view, StateView view
+     , a ~ BlockType view, StateView view
      , ViewConstraints view m)
   => view -> m view
 rewindBlockchainState st0 = do
@@ -212,7 +212,7 @@ decideNewBlock config appValidatorKey
 rxMessageSource
   :: forall m a view r.
      ( MonadIO m, MonadDB m, MonadLogger m, MonadCached a m
-     , Crypto (Alg a), BlockData a, a ~ BlockType view, ViewConstraints view m)
+     , BlockData a, a ~ BlockType view)
   => HeightParameters m view
   -> AppChans view
   -> TQueue (MessageRx 'Unverified a)
@@ -247,7 +247,6 @@ rxMessageSource HeightParameters{..} AppChans{..} appChanRxInternal = do
 --  2. Collect stragglers precommits.
 msgHandlerLoop
   :: ( MonadReadDB m, MonadThrow m, MonadIO m, MonadLogger m, MonadCached a m
-     , Crypto (Alg a), Exception (BChError a)
      , a ~ BlockType view, StateView view, ViewConstraints view m)
   => HeightParameters m view
   -> view
@@ -447,7 +446,6 @@ makeHeightParameters
      , MonadCached a m
      , MonadIO m
      , MonadThrow m
-     , MonadLogger m
      , Crypto (Alg a), BlockData a
      , a ~ BlockType view, StateView view, ViewConstraints view m)
   => Maybe (PrivValidator (Alg a))

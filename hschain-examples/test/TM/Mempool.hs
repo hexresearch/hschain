@@ -19,7 +19,7 @@ import Hedgehog
 import Hedgehog.Gen.QuickCheck (arbitrary)
 import Hedgehog.Gen            (resize)
 
-import HSChain.Crypto         (CryptoHashable,hashed,Hashed)
+import HSChain.Crypto         (hashed,Hashed)
 import HSChain.Crypto.SHA     (SHA1)
 import HSChain.Mempool
 
@@ -83,7 +83,7 @@ propDuplicate = property $ do
   unless (toList mempool == nub (filter (>0) txs)) failure
 
 doPush
-  :: (MonadIO m, CryptoHashable tx)
+  :: (MonadIO m)
   => (tx -> m Bool)
   -> MempoolState (Hashed SHA1 tx) tx
   -> tx
