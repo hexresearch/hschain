@@ -46,8 +46,8 @@ Library
                      , transformers      >=0.5
                      , vector
                      -- Web stuff
-                     , servant         >=0.16 && <0.17
-                     , servant-server  >=0.16 && <0.17
+                     , servant         >=0.16
+                     , servant-server  >=0.16
   Exposed-modules:
                 HSChain.Examples.Coin
                 HSChain.Examples.Coin.API

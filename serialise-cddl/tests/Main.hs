@@ -8,8 +8,8 @@ import Data.Typeable
 import Data.Int
 import Data.Word
 import Data.ByteString.Arbitrary (fromABS)
-import Data.Text.Prettyprint.Doc
-import Data.Text.Prettyprint.Doc.Render.Text (renderStrict)
+import Prettyprinter
+import Prettyprinter.Render.Text (renderStrict)
 -- import Numeric.Natural
 import qualified Data.Text            as T
 import qualified Data.ByteString      as BS

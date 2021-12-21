@@ -303,7 +303,7 @@ testHMAC :: forall alg. (Typeable alg, CryptoHMAC alg)
          => BS.ByteString -> TestTree
 testHMAC str = testGroup (show (typeRep (Proxy @alg)))
   [ testCase "HMAC is correct"
-  $ let Just expected = decodeFromBS $ fst $ B16.decode str
+  $ let Just expected = decodeFromBS =<< either (const Nothing) Just (B16.decode str)
     in expected @=? mac
   --
   , testCase "Size is correct"

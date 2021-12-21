@@ -250,7 +250,7 @@ inMemoryStateView
   -> m (CoinInMemory, [m ()], IO CoinState)
 inMemoryStateView spec valSet0 = do
   varSt <- liftIO $ newIORef $ CoinState mempty mempty
-  (mem@Mempool{..}, memThr) <- newMempool hashed (isRight . validateTxContextFree)
+  (mem@Mempool{}, memThr) <- newMempool hashed (isRight . validateTxContextFree)
   return ( CoinInMemory { _coinState       = CoinState mempty mempty
                         , _coinHeight      = Nothing
                         , _coinValSet      = valSet0
@@ -629,7 +629,7 @@ databaseStateView
   -> ValidatorSet (Alg BData)
   -> m (CoinDB, [m ()])
 databaseStateView spec valSetH0 = do
-  (mem@Mempool{..}, memThr) <- newMempool hashed (isRight . validateTxContextFree)
+  (mem@Mempool{}, memThr) <- newMempool hashed (isRight . validateTxContextFree)
   -- First we find what is latest height at which we updated state and
   -- use it as startign point for our state management.
   (h0,valSet0) <- queryRO $ do

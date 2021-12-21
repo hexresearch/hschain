@@ -30,7 +30,7 @@ module Codec.Serialise.CDDL.AST (
 
 import Data.List
 import Data.Foldable
-import Data.Text.Prettyprint.Doc
+import Prettyprinter
 import qualified Data.Map.Strict as Map
 
 
