@@ -2,11 +2,11 @@
   "nodes": {
     "flake-utils": {
       "locked": {
-        "lastModified": 1631561581,
-        "narHash": "sha256-3VQMV5zvxaVLvqqUrNz3iJelLw30mIVSfZmAaauM3dA=",
+        "lastModified": 1644229661,
+        "narHash": "sha256-1YdnJAsNy69bpcjuoKdOYQX0YxZBiCYZo4Twxerqv7k=",
         "owner": "numtide",
         "repo": "flake-utils",
-        "rev": "7e5bf3925f6fbdfaf50a2a7ca0be2879c4261d19",
+        "rev": "3cecb5b042f7f209c56ffd8371b2711a290ec797",
         "type": "github"
       },
       "original": {
@@ -17,29 +17,31 @@
     },
     "haskell-flake-utils": {
       "inputs": {
-        "flake-utils": "flake-utils"
+        "flake-utils": [
+          "flake-utils"
+        ]
       },
       "locked": {
-        "lastModified": 1640090054,
-        "narHash": "sha256-fyeigAvO7WgXhUjF22QrpiZ/7IR9BmVVkFK1TSLNZ/w=",
-        "owner": "ivanovs-4",
+        "lastModified": 1644881617,
+        "narHash": "sha256-ymCppk2QVKsYWiMIFlRjoGfOX8MrBv+CxMaXQMRkU/M=",
+        "owner": "hexresearch",
         "repo": "haskell-flake-utils",
-        "rev": "13607fa2f8eb89a1301c673226c976865b4dd512",
+        "rev": "dd0c91ff2f37a2778fd92dc0f7e7de93fde50d7a",
         "type": "github"
       },
       "original": {
-        "owner": "ivanovs-4",
+        "owner": "hexresearch",
         "repo": "haskell-flake-utils",
         "type": "github"
       }
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1640091160,
-        "narHash": "sha256-EJBHCR0l0kQPfHpBrtJSGdGm1gyNELDBn4De95NPr4k=",
+        "lastModified": 1644880769,
+        "narHash": "sha256-mXmBosP+rnNdnBhQQP5Frx4QuSwdT63Bozjzm81abMg=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "0dd92e775ab9ed37455469f16469163e1e566575",
+        "rev": "a31699dce9a2d5b432a41a7499e088240d1086c8",
         "type": "github"
       },
       "original": {
@@ -50,6 +52,7 @@
     },
     "root": {
       "inputs": {
+        "flake-utils": "flake-utils",
         "haskell-flake-utils": "haskell-flake-utils",
         "nixpkgs": "nixpkgs"
       }

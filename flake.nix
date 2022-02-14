@@ -3,12 +3,16 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs";
-    haskell-flake-utils.url = "github:ivanovs-4/haskell-flake-utils";
+    flake-utils.url = "github:numtide/flake-utils";
+    haskell-flake-utils.url = "github:hexresearch/haskell-flake-utils";
+    haskell-flake-utils.inputs.nixpkgs.follows = "nixpkgs";
+    haskell-flake-utils.inputs.flake-utils.follows = "flake-utils";
   };
 
-  outputs = { self, nixpkgs, ... }@inputs:
-    inputs.haskell-flake-utils.lib.simpleCabalProject2flake {
-      inherit self nixpkgs;
+outputs = { self, nixpkgs, flake-utils, haskell-flake-utils, ... }@inputs:
+  flake-utils.lib.eachSystem [ "x86_64-linux" ] (system:
+    haskell-flake-utils.lib.simpleCabalProject2flake {
+      inherit self nixpkgs system;
 
       name = "hschain";
 
@@ -33,9 +37,9 @@
       ];
 
       # Override haskell packages
-      hpPreOverrides = { pkgs, system }: new: old:
+      hpPreOverrides = { pkgs }: new: old:
         with pkgs.haskell.lib;
-        with inputs.haskell-flake-utils.lib;
+        with haskell-flake-utils.lib;
         tunePackages pkgs old {
           bytestring-arbitrary = [ (jailbreakUnbreak pkgs) ];
           #
@@ -47,13 +51,12 @@
         };
 
       # Arguments for callCabal2nix
-      packageCabal2nixArgs = {pkgs, system, ...}: {
+      packageCabal2nixArgs = {pkgs}: {
         bls-signatures = {
           bls = pkgs.callPackage (import ./nix/derivations/nix/bls.nix) {};
         };
       };
 
-      shellwithHoogle = false;
-
-    };
+    }
+  );
 }
