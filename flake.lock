@@ -22,11 +22,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1644881617,
-        "narHash": "sha256-ymCppk2QVKsYWiMIFlRjoGfOX8MrBv+CxMaXQMRkU/M=",
+        "lastModified": 1672412555,
+        "narHash": "sha256-Kaa8F7nQFR3KuS6Y9WRUxeJeZlp6CCubyrRfmiEsW4k=",
         "owner": "hexresearch",
         "repo": "haskell-flake-utils",
-        "rev": "dd0c91ff2f37a2778fd92dc0f7e7de93fde50d7a",
+        "rev": "896219e5bde6efac72198550454e9dd9b5ed9ac9",
         "type": "github"
       },
       "original": {

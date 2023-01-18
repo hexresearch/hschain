@@ -10,9 +10,8 @@
   };
 
 outputs = { self, nixpkgs, flake-utils, haskell-flake-utils, ... }@inputs:
-  flake-utils.lib.eachSystem [ "x86_64-linux" ] (system:
     haskell-flake-utils.lib.simpleCabalProject2flake {
-      inherit self nixpkgs system;
+      inherit self nixpkgs;
 
       name = "hschain";
 
@@ -57,6 +56,5 @@ outputs = { self, nixpkgs, flake-utils, haskell-flake-utils, ... }@inputs:
         };
       };
 
-    }
-  );
+    };
 }
